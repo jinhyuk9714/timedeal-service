@@ -27,6 +27,10 @@ public class User {
     @Column(nullable = false, length = 50)
     private String name;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private UserRole role; // 사용자 역할 (USER, ADMIN)
+
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
@@ -49,6 +53,25 @@ public class User {
         this.email = email;
         this.password = password;
         this.name = name;
+        this.role = UserRole.USER; // 기본값: 일반 사용자
+    }
+    
+    /**
+     * 관리자로 역할 변경
+     * 
+     * @param role: 변경할 역할
+     */
+    public void changeRole(UserRole role) {
+        this.role = role;
+    }
+    
+    /**
+     * 관리자 여부 확인
+     * 
+     * @return 관리자이면 true, 아니면 false
+     */
+    public boolean isAdmin() {
+        return this.role == UserRole.ADMIN;
     }
     
     /**

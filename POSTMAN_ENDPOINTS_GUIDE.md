@@ -11,7 +11,8 @@
 3. [사용자 API](#사용자-api)
 4. [상품 API](#상품-api)
 5. [주문 API](#주문-api)
-6. [전체 테스트 시나리오](#전체-테스트-시나리오)
+6. [관리자 API](#관리자-api)
+7. [전체 테스트 시나리오](#전체-테스트-시나리오)
 
 ---
 
@@ -31,6 +32,7 @@ http://localhost:8080
 Postman Environment에 다음 변수 설정:
 - `base_url`: `http://localhost:8080`
 - `jwt_token`: (로그인 후 자동 저장)
+- `admin_token`: (관리자 로그인 후 저장)
 
 ---
 
@@ -57,16 +59,26 @@ Postman Environment에 다음 변수 설정:
 ```json
 {
   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "tokenType": "Bearer"
+  "tokenType": "Bearer",
+  "role": "USER"
 }
 ```
+- `role`: 사용자 역할 (`USER` 또는 `ADMIN`)
 
-**Postman Tests 스크립트** (자동 토큰 저장):
+**Postman Tests 스크립트** (ROLE에 따라 토큰 저장):
 ```javascript
 if (pm.response.code === 200) {
     var jsonData = pm.response.json();
+    
     pm.environment.set("jwt_token", jsonData.token);
-    console.log("JWT 토큰이 저장되었습니다:", jsonData.token);
+    
+    // ROLE이 ADMIN이면 admin_token에도 저장
+    if (jsonData.role === "ADMIN") {
+        pm.environment.set("admin_token", jsonData.token);
+        console.log("✅ 관리자 토큰 저장 완료");
+    } else {
+        console.log("✅ JWT 토큰 저장 완료");
+    }
 }
 ```
 
@@ -101,7 +113,7 @@ if (pm.response.code === 200) {
 ```
 
 **에러 응답**:
-- `400 Bad Request`: 토큰 없음
+- `400 Bad Request`: Authorization 헤더 없음 또는 Bearer 접두사 없음
 - `401 Unauthorized`: 잘못된 토큰
 
 ---
@@ -132,6 +144,7 @@ if (pm.response.code === 200) {
   "id": 1,
   "email": "user@example.com",
   "name": "홍길동",
+  "role": "USER",
   "createdAt": "2026-01-26T18:00:00",
   "updatedAt": "2026-01-26T18:00:00"
 }
@@ -163,6 +176,7 @@ if (pm.response.code === 200) {
   "id": 1,
   "email": "user@example.com",
   "name": "홍길동",
+  "role": "USER",
   "createdAt": "2026-01-26T18:00:00",
   "updatedAt": "2026-01-26T18:00:00"
 }
@@ -283,6 +297,8 @@ if (pm.response.code === 200) {
 }
 ```
 
+**⚠️ 중요**: `stockQuantity` 필드에 **남은 재고 수량**이 표시됩니다.
+
 **에러 응답**:
 - `404 Not Found`: 존재하지 않는 상품
 - `401 Unauthorized`: 인증 토큰 없음
@@ -295,14 +311,12 @@ if (pm.response.code === 200) {
 
 **요청**
 - **Method**: `POST`
-- **URL**: `{{base_url}}/api/orders/users/{userId}`
+- **URL**: `{{base_url}}/api/orders`
 - **Headers**: 
   ```
   Content-Type: application/json
   Authorization: Bearer {{jwt_token}}
   ```
-- **Path Variables**: 
-  - `userId`: 주문하는 사용자 ID (예: `1`)
 - **Body** (raw JSON):
   ```json
   {
@@ -329,7 +343,7 @@ if (pm.response.code === 200) {
 - 주문은 타임딜 오픈 시간(`openTime`) 이후에만 가능합니다
 - 현재 시간이 `openTime`보다 이전이면 주문 불가
 - 재고가 부족하면 주문 불가
-- 요청한 `userId`와 인증된 사용자 ID가 일치해야 합니다
+- **JWT 토큰에서 사용자 ID를 자동으로 추출**하므로 URL에 userId가 필요 없습니다
 
 **에러 응답**:
 - `400 Bad Request`: 
@@ -338,8 +352,7 @@ if (pm.response.code === 200) {
   - 필수 필드 누락
   - 주문 수량이 0 이하
 - `401 Unauthorized`: 인증 토큰 없음
-- `403 Forbidden`: 다른 사용자 ID로 주문 시도
-- `404 Not Found`: 존재하지 않는 상품 또는 사용자
+- `404 Not Found`: 존재하지 않는 상품
 
 ---
 
@@ -376,18 +389,16 @@ if (pm.response.code === 200) {
 
 ---
 
-### 3. 사용자별 주문 목록 조회
+### 3. 내 주문 목록 조회
 
 **요청**
 - **Method**: `GET`
-- **URL**: `{{base_url}}/api/orders/users/{userId}`
+- **URL**: `{{base_url}}/api/orders/my-orders`
 - **Headers**: 
   ```
   Content-Type: application/json
   Authorization: Bearer {{jwt_token}}
   ```
-- **Path Variables**: 
-  - `userId`: 사용자 ID (예: `1`)
 
 **응답** (200 OK):
 ```json
@@ -415,10 +426,9 @@ if (pm.response.code === 200) {
 ]
 ```
 
-**⚠️ 중요**: 요청한 `userId`와 인증된 사용자 ID가 일치해야 합니다.
+**⚠️ 중요**: **JWT 토큰에서 사용자 ID를 자동으로 추출**하므로 URL에 userId가 필요 없습니다. 로그인한 사용자의 주문만 조회됩니다.
 
 **에러 응답**:
-- `403 Forbidden`: 다른 사용자 주문 목록 조회 시도
 - `401 Unauthorized`: 인증 토큰 없음
 
 ---
@@ -461,9 +471,203 @@ if (pm.response.code === 200) {
 
 ---
 
+## 관리자 API
+
+**⚠️ 관리자 권한 필요**: 모든 관리자 API는 `ADMIN` 역할을 가진 사용자만 접근 가능합니다.
+
+### 1. 전체 주문 목록 조회
+
+**요청**
+- **Method**: `GET`
+- **URL**: `{{base_url}}/api/admin/orders`
+- **Headers**: 
+  ```
+  Content-Type: application/json
+  Authorization: Bearer {{admin_token}}
+  ```
+
+**응답** (200 OK):
+```json
+[
+  {
+    "id": 1,
+    "userId": 1,
+    "itemId": 1,
+    "itemName": "타임딜 상품 1",
+    "status": "ORDERED",
+    "quantity": 2,
+    "createdAt": "2026-01-26T18:00:00",
+    "updatedAt": "2026-01-26T18:00:00"
+  },
+  {
+    "id": 2,
+    "userId": 2,
+    "itemId": 1,
+    "itemName": "타임딜 상품 1",
+    "status": "ORDERED",
+    "quantity": 1,
+    "createdAt": "2026-01-26T18:05:00",
+    "updatedAt": "2026-01-26T18:05:00"
+  }
+]
+```
+
+**에러 응답**:
+- `401 Unauthorized`: 인증 토큰 없음
+- `403 Forbidden`: 관리자 권한 없음
+
+---
+
+### 2. 상품 수정
+
+**요청**
+- **Method**: `PUT`
+- **URL**: `{{base_url}}/api/admin/items/{id}`
+- **Headers**: 
+  ```
+  Content-Type: application/json
+  Authorization: Bearer {{admin_token}}
+  ```
+- **Path Variables**: 
+  - `id`: 수정할 상품 ID (예: `1`)
+- **Body** (raw JSON):
+  ```json
+  {
+    "name": "수정된 상품명",
+    "price": 199000,
+    "openTime": "2026-01-27T15:00:00",
+    "stockQuantity": 200
+  }
+  ```
+
+**응답** (200 OK):
+```json
+{
+  "id": 1,
+  "name": "수정된 상품명",
+  "price": 199000,
+  "openTime": "2026-01-27T15:00:00",
+  "stockQuantity": 200,
+  "createdAt": "2026-01-26T18:00:00",
+  "updatedAt": "2026-01-26T19:00:00"
+}
+```
+
+**에러 응답**:
+- `400 Bad Request`: 유효성 검증 실패
+- `401 Unauthorized`: 인증 토큰 없음
+- `403 Forbidden`: 관리자 권한 없음
+- `404 Not Found`: 존재하지 않는 상품
+
+---
+
+### 3. 상품 삭제
+
+**요청**
+- **Method**: `DELETE`
+- **URL**: `{{base_url}}/api/admin/items/{id}`
+- **Headers**: 
+  ```
+  Content-Type: application/json
+  Authorization: Bearer {{admin_token}}
+  ```
+- **Path Variables**: 
+  - `id`: 삭제할 상품 ID (예: `1`)
+
+**응답** (204 No Content):
+```
+(응답 본문 없음)
+```
+
+**에러 응답**:
+- `401 Unauthorized`: 인증 토큰 없음
+- `403 Forbidden`: 관리자 권한 없음
+- `404 Not Found`: 존재하지 않는 상품
+
+---
+
+### 4. 사용자 역할 변경
+
+**요청**
+- **Method**: `PATCH`
+- **URL**: `{{base_url}}/api/admin/users/{id}/role`
+- **Headers**: 
+  ```
+  Content-Type: application/json
+  Authorization: Bearer {{admin_token}}
+  ```
+- **Path Variables**: 
+  - `id`: 역할을 변경할 사용자 ID (예: `1`)
+- **Body** (raw JSON):
+  ```json
+  {
+    "role": "ADMIN"
+  }
+  ```
+  - `role` 값: `"USER"` 또는 `"ADMIN"`
+
+**응답** (200 OK):
+```json
+{
+  "id": 1,
+  "email": "user@example.com",
+  "name": "홍길동",
+  "role": "ADMIN",
+  "createdAt": "2026-01-26T18:00:00",
+  "updatedAt": "2026-01-26T19:00:00"
+}
+```
+
+**에러 응답**:
+- `400 Bad Request`: 유효성 검증 실패
+- `401 Unauthorized`: 인증 토큰 없음
+- `403 Forbidden`: 관리자 권한 없음
+- `404 Not Found`: 존재하지 않는 사용자
+
+---
+
+### 5. 전체 사용자 목록 조회
+
+**요청**
+- **Method**: `GET`
+- **URL**: `{{base_url}}/api/admin/users`
+- **Headers**: 
+  ```
+  Content-Type: application/json
+  Authorization: Bearer {{admin_token}}
+  ```
+
+**응답** (200 OK):
+```json
+[
+  {
+    "id": 1,
+    "email": "user1@example.com",
+    "name": "홍길동",
+    "role": "USER",
+    "createdAt": "2026-01-26T18:00:00",
+    "updatedAt": "2026-01-26T18:00:00"
+  },
+  {
+    "id": 2,
+    "email": "admin@example.com",
+    "name": "관리자",
+    "role": "ADMIN",
+    "createdAt": "2026-01-26T17:00:00",
+    "updatedAt": "2026-01-26T17:00:00"
+  }
+]
+```
+
+**에러 응답**:
+- `401 Unauthorized`: 인증 토큰 없음
+- `403 Forbidden`: 관리자 권한 없음
+
+---
+
 ## 전체 테스트 시나리오
 
-### 시나리오 1: 정상 플로우
+### 시나리오 1: 일반 사용자 플로우
 
 1. **회원가입**
    ```
@@ -508,7 +712,7 @@ if (pm.response.code === 200) {
 
 5. **주문 생성** (오픈 시간이 지난 후)
    ```
-   POST {{base_url}}/api/orders/users/1
+   POST {{base_url}}/api/orders
    Headers: Authorization: Bearer {{jwt_token}}
    Body: {
      "itemId": 1,
@@ -524,15 +728,15 @@ if (pm.response.code === 200) {
    → stockQuantity: 98 확인 (100 - 2)
    ```
 
-7. **주문 조회**
+7. **내 주문 목록 조회**
    ```
-   GET {{base_url}}/api/orders/1
+   GET {{base_url}}/api/orders/my-orders
    Headers: Authorization: Bearer {{jwt_token}}
    ```
 
-8. **주문 목록 조회**
+8. **주문 조회**
    ```
-   GET {{base_url}}/api/orders/users/1
+   GET {{base_url}}/api/orders/1
    Headers: Authorization: Bearer {{jwt_token}}
    ```
 
@@ -558,6 +762,63 @@ if (pm.response.code === 200) {
 
 ---
 
+### 시나리오 2: 관리자 플로우
+
+1. **관리자 계정 생성** (또는 역할 변경)
+   ```
+   POST {{base_url}}/api/users
+   Body: {
+     "email": "admin@test.com",
+     "password": "admin123",
+     "name": "관리자"
+   }
+   ```
+
+2. **관리자 로그인**
+   ```
+   POST {{base_url}}/api/auth/login
+   Body: {
+     "email": "admin@test.com",
+     "password": "admin123"
+   }
+   → admin_token에 저장
+   ```
+
+3. **사용자 역할 변경** (일반 사용자를 관리자로)
+   ```
+   PATCH {{base_url}}/api/admin/users/1/role
+   Headers: Authorization: Bearer {{admin_token}}
+   Body: {
+     "role": "ADMIN"
+   }
+   ```
+
+4. **전체 주문 목록 조회**
+   ```
+   GET {{base_url}}/api/admin/orders
+   Headers: Authorization: Bearer {{admin_token}}
+   ```
+
+5. **상품 수정**
+   ```
+   PUT {{base_url}}/api/admin/items/1
+   Headers: Authorization: Bearer {{admin_token}}
+   Body: {
+     "name": "수정된 상품명",
+     "price": 199000,
+     "openTime": "2026-01-27T15:00:00",
+     "stockQuantity": 200
+   }
+   ```
+
+6. **전체 사용자 목록 조회**
+   ```
+   GET {{base_url}}/api/admin/users
+   Headers: Authorization: Bearer {{admin_token}}
+   ```
+
+---
+
 ## 📝 Postman Collection 설정
 
 ### Collection Variables
@@ -580,7 +841,7 @@ pm.request.headers.add({
 
 인증이 필요한 API의 **Authorization** 탭:
 - **Type**: `Bearer Token`
-- **Token**: `{{jwt_token}}`
+- **Token**: `{{jwt_token}}` (일반 사용자) 또는 `{{admin_token}}` (관리자)
 
 ---
 
@@ -590,9 +851,10 @@ pm.request.headers.add({
 |----------|------|------|
 | 200 OK | 요청 성공 | 조회 성공 |
 | 201 Created | 리소스 생성 성공 | 회원가입, 상품 등록, 주문 생성 |
+| 204 No Content | 성공 (응답 본문 없음) | 상품 삭제 |
 | 400 Bad Request | 잘못된 요청 | 유효성 검증 실패, 비즈니스 규칙 위반 |
 | 401 Unauthorized | 인증 실패 | 토큰 없음, 잘못된 토큰, 로그인 실패 |
-| 403 Forbidden | 권한 없음 | 다른 사용자 리소스 접근 |
+| 403 Forbidden | 권한 없음 | 관리자 권한 없음 |
 | 404 Not Found | 리소스를 찾을 수 없음 | 존재하지 않는 ID |
 
 ---
@@ -615,7 +877,30 @@ pm.request.headers.add({
 - 주문 후: `stockQuantity: 98` (2개 주문 시)
 - 취소 후: `stockQuantity: 100` (재고 복구)
 
-### 3. 동시성 테스트
+### 3. JWT 토큰 자동 관리 (ROLE 기반)
+
+로그인 API 응답의 `role` 필드에 따라 토큰을 저장합니다.
+
+```javascript
+if (pm.response.code === 200) {
+    var jsonData = pm.response.json();
+    
+    pm.environment.set("jwt_token", jsonData.token);
+    
+    if (jsonData.role === "ADMIN") {
+        pm.environment.set("admin_token", jsonData.token);
+        console.log("✅ 관리자 토큰 저장 완료");
+    } else {
+        console.log("✅ JWT 토큰 저장 완료");
+    }
+}
+```
+
+별도의 로그인 요청으로 분리해도 됩니다.
+- **일반 사용자 로그인**: `jwt_token`만 저장하는 스크립트
+- **관리자 로그인**: `admin_token`만 저장하는 스크립트 (동일한 `role` 기반 조건 사용)
+
+### 4. 동시성 테스트
 
 여러 사용자가 동시에 주문하는 시나리오 테스트:
 - 같은 상품에 대해 여러 주문 동시 생성
@@ -631,4 +916,5 @@ pm.request.headers.add({
 
 ---
 
-**작성일**: 2026-01-26
+**작성일**: 2026-01-26  
+**최종 업데이트**: 2026-01-26

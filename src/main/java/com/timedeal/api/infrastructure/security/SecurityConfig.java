@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -33,6 +34,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
  */
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity // @PreAuthorize 어노테이션 활성화
 @RequiredArgsConstructor
 @Profile("!test")
 public class SecurityConfig {
@@ -60,6 +62,9 @@ public class SecurityConfig {
                         // 공개 엔드포인트 (인증 불필요)
                         .requestMatchers("/api/auth/**").permitAll() // 로그인, 회원가입
                         .requestMatchers("/api/users", "/api/users/**").permitAll() // 회원가입은 공개 (선택사항)
+                        
+                        // 관리자 전용 엔드포인트
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN") // 관리자만 접근 가능
                         
                         // 나머지 모든 요청은 인증 필요
                         .anyRequest().authenticated()

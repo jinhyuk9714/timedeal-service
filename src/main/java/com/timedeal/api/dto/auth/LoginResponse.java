@@ -7,11 +7,13 @@ import lombok.Getter;
  */
 @Getter
 public class LoginResponse {
-    private String token; // JWT 토큰
+    private String token;   // JWT 토큰
     private String tokenType; // 토큰 타입
+    private String role;    // 사용자 역할 (USER, ADMIN)
 
-    public LoginResponse(String token) {
+    public LoginResponse(String token, String role) {
         this.token = token;
         this.tokenType = "Bearer";
+        this.role = role;
     }
 }

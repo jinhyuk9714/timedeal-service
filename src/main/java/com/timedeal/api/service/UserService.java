@@ -11,6 +11,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -55,5 +57,16 @@ public class UserService {
     public User findById(Long id) {
         return userRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+    }
+    
+    /**
+     * 전체 사용자 목록 조회 (관리자 전용)
+     * 
+     * @return List<UserResponse> (모든 사용자 목록)
+     */
+    public List<UserResponse> getAllUsers() {
+        return userRepository.findAll().stream()
+                .map(UserResponse::new)
+                .toList();
     }
 }

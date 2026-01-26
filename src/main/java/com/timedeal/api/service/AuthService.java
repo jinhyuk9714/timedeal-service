@@ -47,11 +47,12 @@ public class AuthService {
             throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
         }
 
-        // 3. JWT 토큰 생성
-        String token = jwtTokenProvider.generateToken(user.getId());
+        // 3. JWT 토큰 생성 (사용자 ID와 Role 포함)
+        String role = user.getRole() != null ? user.getRole().name() : null;
+        String token = jwtTokenProvider.generateToken(user.getId(), role);
 
-        // 4. 응답 반환
-        return new LoginResponse(token);
+        // 4. 응답 반환 (role 포함하여 클라이언트에서 구분 가능)
+        return new LoginResponse(token, role);
     }
 
     /**

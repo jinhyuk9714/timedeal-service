@@ -53,6 +53,19 @@ public class Item {
     }
     
     /**
+     * 상품 정보 수정
+     * 
+     * @param name: 상품명
+     * @param price: 가격
+     * @param openTime: 오픈 시간
+     */
+    public void update(String name, BigDecimal price, LocalDateTime openTime) {
+        this.name = name;
+        this.price = price;
+        this.openTime = openTime;
+    }
+    
+    /**
      * 테스트 전용 메서드: 오픈 시간 설정
      * 
      * 주의: 이 메서드는 테스트 코드에서만 사용됩니다.

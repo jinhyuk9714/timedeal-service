@@ -12,6 +12,7 @@ public enum ErrorCode {
     
     // 상품
     ITEM_NOT_FOUND(HttpStatus.NOT_FOUND, "상품을 찾을 수 없습니다."),
+    ITEM_CANNOT_BE_DELETED(HttpStatus.BAD_REQUEST, "주문이 존재하는 상품은 삭제할 수 없습니다."),
     
     // 재고
     STOCK_NOT_FOUND(HttpStatus.NOT_FOUND, "재고를 찾을 수 없습니다."),

@@ -49,15 +49,32 @@ public class JwtTokenProvider {
      * @return 생성된 JWT 토큰 문자열
      */
     public String generateToken(Long userId) {
+        return generateToken(userId, null);
+    }
+
+    /**
+     * 사용자 ID와 Role을 기반으로 JWT 토큰을 생성
+     * 
+     * @param userId: 사용자 ID
+     * @param role: 사용자 역할 (USER, ADMIN)
+     * @return 생성된 JWT 토큰 문자열
+     */
+    public String generateToken(Long userId, String role) {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + tokenValidityInMilliseconds);
 
-        return Jwts.builder()
+        var builder = Jwts.builder()
                 .subject(String.valueOf(userId)) // 사용자 ID를 subject에 저장
                 .issuedAt(now) // 토큰 발급 시간
                 .expiration(expiryDate) // 토큰 만료 시간
-                .signWith(secretKey) // 비밀키로 서명
-                .compact(); // 최종 토큰 문자열 생성
+                .signWith(secretKey); // 비밀키로 서명
+
+        // Role 정보가 있으면 claim에 추가
+        if (role != null) {
+            builder.claim("role", role);
+        }
+
+        return builder.compact(); // 최종 토큰 문자열 생성
     }
 
     /**
@@ -93,6 +110,22 @@ public class JwtTokenProvider {
             // 토큰이 만료되었거나, 서명이 잘못되었거나, 형식이 잘못된 경우
             return false;
         }
+    }
+
+    /**
+     * JWT 토큰에서 사용자 Role을 추출
+     * 
+     * @param token: JWT 토큰 문자열
+     * @return 사용자 Role (없으면 null)
+     */
+    public String getRoleFromToken(String token) {
+        Claims claims = Jwts.parser()
+                .verifyWith(secretKey)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+        
+        return claims.get("role", String.class);
     }
 
     /**

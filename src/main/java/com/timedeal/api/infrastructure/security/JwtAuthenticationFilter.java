@@ -14,7 +14,8 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.Collections;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * JWT 토큰을 검증하고 인증 정보를 설정하는 필터
@@ -57,24 +58,35 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (StringUtils.hasText(token) 
                 && jwtTokenProvider.validateToken(token) 
                 && !tokenBlacklistService.isBlacklisted(token)) {
-            // 3. 토큰에서 사용자 ID 추출
+            // 3. 토큰에서 사용자 ID와 Role 추출
             Long userId = jwtTokenProvider.getUserIdFromToken(token);
+            String role = jwtTokenProvider.getRoleFromToken(token);
 
-            // 4. 인증 객체 생성
+            // 4. 권한 목록 생성
+            // - JWT 토큰에서 Role 정보를 추출하여 권한으로 설정
+            // - Role이 없으면 기본적으로 ROLE_USER 부여
+            List<SimpleGrantedAuthority> authorities = new ArrayList<>();
+            if (role != null) {
+                authorities.add(new SimpleGrantedAuthority("ROLE_" + role));
+            } else {
+                authorities.add(new SimpleGrantedAuthority("ROLE_USER")); // 기본 권한
+            }
+
+            // 5. 인증 객체 생성
             // - UsernamePasswordAuthenticationToken: Spring Security의 인증 객체
             // - principal: 인증된 사용자 정보 (여기서는 userId)
-            // - authorities: 사용자의 권한 (현재는 빈 리스트)
+            // - authorities: 사용자의 권한 (ROLE_USER 또는 ROLE_ADMIN)
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(
                             userId, // principal (인증된 사용자)
                             null, // credentials (비밀번호, JWT에서는 불필요)
-                            Collections.singletonList(new SimpleGrantedAuthority("ROLE_USER")) // 권한
+                            authorities // 권한 목록
                     );
 
-            // 5. 인증 객체에 요청 정보 추가
+            // 6. 인증 객체에 요청 정보 추가
             authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
-            // 6. SecurityContext에 인증 정보 저장
+            // 7. SecurityContext에 인증 정보 저장
             // - SecurityContext: 현재 요청의 보안 컨텍스트
             // - Controller에서 @AuthenticationPrincipal로 접근 가능
             SecurityContextHolder.getContext().setAuthentication(authentication);
