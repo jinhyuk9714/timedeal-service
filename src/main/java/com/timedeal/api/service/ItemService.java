@@ -37,20 +37,44 @@ public class ItemService {
                 .item(savedItem)
                 .quantity(request.getStockQuantity())
                 .build();
-        stockRepository.save(stock);
+        Stock savedStock = stockRepository.save(stock);
         
-        return new ItemResponse(savedItem);
+        // 재고 정보를 포함한 응답 반환
+        return new ItemResponse(savedItem, savedStock);
     }
     
+    /**
+     * 상품 조회 (단건)
+     * 
+     * @param id: 상품 ID
+     * @return ItemResponse (상품 정보 + 재고 수량)
+     */
     public ItemResponse getItem(Long id) {
         Item item = itemRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ITEM_NOT_FOUND));
-        return new ItemResponse(item);
+        
+        // 재고 정보 조회
+        Stock stock = stockRepository.findByItemId(id)
+                .orElse(null); // 재고가 없을 수도 있음 (이론적으로는 항상 있어야 함)
+        
+        return new ItemResponse(item, stock);
     }
     
+    /**
+     * 전체 상품 목록 조회
+     * 
+     * @return List<ItemResponse> (상품 목록 + 각 상품의 재고 수량)
+     */
     public List<ItemResponse> getAllItems() {
-        return itemRepository.findAll().stream()
-                .map(ItemResponse::new)
+        List<Item> items = itemRepository.findAll();
+        
+        return items.stream()
+                .map(item -> {
+                    // 각 상품의 재고 정보 조회
+                    Stock stock = stockRepository.findByItemId(item.getId())
+                            .orElse(null);
+                    return new ItemResponse(item, stock);
+                })
                 .toList();
     }
     

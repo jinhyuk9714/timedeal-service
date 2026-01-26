@@ -52,6 +52,12 @@ class ItemControllerTest {
     @MockitoBean
     private JwtTokenProvider jwtTokenProvider; // Security 관련 빈 Mock 처리
     
+    @MockitoBean
+    private com.timedeal.api.infrastructure.security.TokenBlacklistService tokenBlacklistService; // Redis 관련 빈 Mock 처리
+    
+    @MockitoBean
+    private com.timedeal.api.infrastructure.security.JwtAuthenticationFilter jwtAuthenticationFilter; // JWT 필터 Mock 처리
+    
     @BeforeEach
     void setUp() {
         // ObjectMapper 직접 생성 (LocalDateTime 지원)

@@ -51,42 +51,35 @@ public class OrderController {
     /**
      * 주문 생성 API
      * 
-     * @PostMapping("/users/{userId}"): HTTP POST 요청을 처리
-     * - URL: POST /api/orders/users/{userId}
+     * @PostMapping: HTTP POST 요청을 처리
+     * - URL: POST /api/orders
+     * - JWT 토큰에서 사용자 ID를 자동으로 추출하므로 URL에 userId가 필요 없음
      * 
      * @Valid: 
      * - DTO의 유효성 검증 활성화
      * - OrderRequest의 @NotNull, @Positive 등의 검증 실행
      * - 검증 실패 시 400 Bad Request 반환
      * 
-     * @PathVariable:
-     * - URL 경로의 {userId} 값을 메서드 파라미터로 받음
-     * 
      * @AuthenticationPrincipal:
      * - 인증된 사용자 ID를 자동으로 주입
      * - JWT 토큰에서 추출한 사용자 ID
+     * - 인증되지 않은 사용자는 null이 될 수 있음
      * 
-     * 인증 검증:
-     * - 요청한 userId와 인증된 사용자 ID가 일치하는지 확인
-     * - 불일치 시 403 Forbidden 반환
-     * 
-     * @param userId: 요청한 사용자 ID (URL 경로에서 추출)
      * @param request: 주문 요청 (상품 ID, 수량)
      * @param authenticatedUserId: 인증된 사용자 ID (JWT에서 추출)
      * @return OrderResponse (생성된 주문 정보)
      */
-    @PostMapping("/users/{userId}")
+    @PostMapping
     public ResponseEntity<OrderResponse> createOrder(
-            @PathVariable Long userId,
             @Valid @RequestBody OrderRequest request,
             @AuthenticationPrincipal Long authenticatedUserId) {
         
-        // 인증 검증: 요청한 사용자와 인증된 사용자가 일치하는지 확인
-        if (!isAuthorized(userId, authenticatedUserId)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        // 인증 확인: JWT 토큰이 없으면 401 반환
+        if (authenticatedUserId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
         
-        OrderResponse response = orderService.createOrder(userId, request);
+        OrderResponse response = orderService.createOrder(authenticatedUserId, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -113,32 +106,29 @@ public class OrderController {
     /**
      * 사용자별 주문 목록 조회 API
      * 
-     * @GetMapping("/users/{userId}"): 
+     * @GetMapping("/my-orders"): 
      * - HTTP GET 요청 처리
-     * - URL: GET /api/orders/users/{userId}
+     * - URL: GET /api/orders/my-orders
+     * - JWT 토큰에서 사용자 ID를 자동으로 추출하므로 URL에 userId가 필요 없음
      * 
      * @AuthenticationPrincipal:
      * - 인증된 사용자 ID를 자동으로 주입
+     * - JWT 토큰에서 추출한 사용자 ID
+     * - 인증되지 않은 사용자는 null이 될 수 있음
      * 
-     * 인증 검증:
-     * - 요청한 userId와 인증된 사용자 ID가 일치하는지 확인
-     * - 불일치 시 403 Forbidden 반환
-     * 
-     * @param userId: 요청한 사용자 ID (URL 경로에서 추출)
      * @param authenticatedUserId: 인증된 사용자 ID (JWT에서 추출)
      * @return List<OrderResponse> (사용자의 주문 목록)
      */
-    @GetMapping("/users/{userId}")
-    public ResponseEntity<List<OrderResponse>> getUserOrders(
-            @PathVariable Long userId,
+    @GetMapping("/my-orders")
+    public ResponseEntity<List<OrderResponse>> getMyOrders(
             @AuthenticationPrincipal Long authenticatedUserId) {
         
-        // 인증 검증: 요청한 사용자와 인증된 사용자가 일치하는지 확인
-        if (!isAuthorized(userId, authenticatedUserId)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        // 인증 확인: JWT 토큰이 없으면 401 반환
+        if (authenticatedUserId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
         
-        List<OrderResponse> responses = orderService.getUserOrders(userId);
+        List<OrderResponse> responses = orderService.getUserOrders(authenticatedUserId);
         return ResponseEntity.ok(responses);
     }
 
@@ -161,19 +151,4 @@ public class OrderController {
         return ResponseEntity.ok(response);
     }
 
-    /**
-     * 사용자 인증 검증 헬퍼 메서드
-     * 
-     * 요청한 사용자 ID와 인증된 사용자 ID가 일치하는지 확인합니다.
-     * 테스트 환경에서는 authenticatedUserId가 null일 수 있으므로 null 체크를 포함합니다.
-     * 
-     * @param requestedUserId: 요청한 사용자 ID
-     * @param authenticatedUserId: 인증된 사용자 ID (JWT에서 추출)
-     * @return true: 인증 통과, false: 인증 실패
-     */
-    private boolean isAuthorized(Long requestedUserId, Long authenticatedUserId) {
-        // 테스트 환경에서는 authenticatedUserId가 null일 수 있으므로 허용
-        // 프로덕션 환경에서는 SecurityConfig에서 인증이 필수이므로 null이 아님
-        return authenticatedUserId == null || requestedUserId.equals(authenticatedUserId);
-    }
 }

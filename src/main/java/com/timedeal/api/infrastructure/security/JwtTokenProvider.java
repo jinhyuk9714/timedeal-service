@@ -94,4 +94,20 @@ public class JwtTokenProvider {
             return false;
         }
     }
+
+    /**
+     * JWT 토큰의 만료 시간을 추출
+     * 
+     * @param token: JWT 토큰 문자열
+     * @return 만료 시간 (밀리초)
+     */
+    public long getExpirationTime(String token) {
+        Claims claims = Jwts.parser()
+                .verifyWith(secretKey)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+        
+        return claims.getExpiration().getTime();
+    }
 }

@@ -35,6 +35,7 @@ import java.util.Collections;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider jwtTokenProvider;
+    private final TokenBlacklistService tokenBlacklistService;
 
     /**
      * HTTP 요청에서 JWT 토큰을 추출하고 검증하여 인증 정보를 설정
@@ -52,8 +53,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         // 1. 요청 헤더에서 JWT 토큰 추출
         String token = getTokenFromRequest(request);
 
-        // 2. 토큰이 있고 유효한 경우
-        if (StringUtils.hasText(token) && jwtTokenProvider.validateToken(token)) {
+        // 2. 토큰이 있고 유효하며 블랙리스트에 없는 경우
+        if (StringUtils.hasText(token) 
+                && jwtTokenProvider.validateToken(token) 
+                && !tokenBlacklistService.isBlacklisted(token)) {
             // 3. 토큰에서 사용자 ID 추출
             Long userId = jwtTokenProvider.getUserIdFromToken(token);
 

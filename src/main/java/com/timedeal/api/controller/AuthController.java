@@ -73,4 +73,41 @@ public class AuthController {
         LoginResponse response = authService.login(request);
         return ResponseEntity.ok(response);
     }
+
+    /**
+     * 사용자 로그아웃 API
+     * 
+     * @PostMapping("/logout"): HTTP POST 요청을 처리
+     * - URL: POST /api/auth/logout
+     * 
+     * 인증 필요:
+     * - Authorization 헤더에 JWT 토큰이 필요합니다.
+     * - 로그아웃할 토큰을 헤더에서 추출하여 블랙리스트에 추가합니다.
+     * 
+     * 로그아웃 프로세스:
+     * 1. 요청 헤더에서 JWT 토큰 추출
+     * 2. 토큰 유효성 검증
+     * 3. 토큰을 Redis 블랙리스트에 추가
+     * 4. 토큰 만료 시간까지 블랙리스트에 보관
+     * 
+     * 주의사항:
+     * - 로그아웃 후 해당 토큰으로는 더 이상 인증이 불가능합니다.
+     * - 클라이언트에서도 토큰을 삭제해야 합니다.
+     * 
+     * @param request: HTTP 요청 (토큰은 헤더에서 추출)
+     * @return 200 OK (성공 응답)
+     */
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(jakarta.servlet.http.HttpServletRequest request) {
+        // Authorization 헤더에서 토큰 추출
+        String bearerToken = request.getHeader("Authorization");
+        if (bearerToken == null || !bearerToken.startsWith("Bearer ")) {
+            return ResponseEntity.badRequest().build();
+        }
+        
+        String token = bearerToken.substring(7);
+        authService.logout(token);
+        
+        return ResponseEntity.ok().build();
+    }
 }
