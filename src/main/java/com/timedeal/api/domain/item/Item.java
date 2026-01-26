@@ -52,11 +52,26 @@ public class Item {
         this.openTime = openTime;
     }
     
-    // 테스트를 위한 setter (실제 프로덕션에서는 사용하지 않음)
+    /**
+     * 테스트 전용 메서드: 오픈 시간 설정
+     * 
+     * 주의: 이 메서드는 테스트 코드에서만 사용됩니다.
+     * 프로덕션 코드에서는 사용하지 않아야 합니다.
+     * 
+     * @param openTime: 설정할 오픈 시간
+     */
     public void setOpenTime(LocalDateTime openTime) {
         this.openTime = openTime;
     }
     
+    /**
+     * 테스트 전용 메서드: ID 설정
+     * 
+     * 주의: 이 메서드는 테스트 코드에서만 사용됩니다.
+     * 프로덕션 코드에서는 사용하지 않아야 합니다.
+     * 
+     * @param id: 설정할 ID
+     */
     public void setId(Long id) {
         this.id = id;
     }

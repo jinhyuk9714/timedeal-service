@@ -7,8 +7,11 @@ import com.timedeal.api.service.ItemService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import com.timedeal.api.infrastructure.security.JwtTokenProvider;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -26,8 +29,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * - Controller, Filter, Interceptor 등 웹 관련 빈만 로드
  * - Service는 Mock으로 대체 (@MockitoBean 사용)
  * - 빠른 테스트 실행 가능
+ * 
+ * @ActiveProfiles("test"):
+ * - test 프로파일 활성화하여 TestSecurityConfig 사용
+ * 
+ * @AutoConfigureMockMvc(addFilters = false):
+ * - Security 필터를 제외하여 인증 없이 API를 테스트
  */
-@WebMvcTest(ItemController.class)
+@WebMvcTest(controllers = ItemController.class)
+@AutoConfigureMockMvc(addFilters = false)
+@ActiveProfiles("test")
 class ItemControllerTest {
 
     @Autowired
@@ -37,6 +48,9 @@ class ItemControllerTest {
 
     @MockitoBean
     private ItemService itemService; // Service는 Mock으로 대체
+    
+    @MockitoBean
+    private JwtTokenProvider jwtTokenProvider; // Security 관련 빈 Mock 처리
     
     @BeforeEach
     void setUp() {

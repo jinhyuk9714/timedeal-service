@@ -17,8 +17,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import com.timedeal.api.infrastructure.config.TestSecurityConfig;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -47,11 +49,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 
  * 이 테스트는 실제 데이터베이스와 통신하며 전체 플로우를 검증합니다.
  */
-@SpringBootTest
-@AutoConfigureMockMvc
+@SpringBootTest(
+    properties = {
+        "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration"
+    }
+)
+@AutoConfigureMockMvc(addFilters = false) // Security 필터 완전히 제거
 @Testcontainers
 @ActiveProfiles("test")
 @Transactional
+@Import(TestSecurityConfig.class) // PasswordEncoder만 제공
 class TimeDealIntegrationTest {
 
     @Autowired
@@ -70,6 +77,9 @@ class TimeDealIntegrationTest {
 
     @Autowired
     private OrderRepository orderRepository;
+    
+    @Autowired
+    private org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
 
     @Container
     static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0")
@@ -98,10 +108,10 @@ class TimeDealIntegrationTest {
         // ObjectMapper 직접 생성 (LocalDateTime 지원)
         objectMapper = new ObjectMapper();
         objectMapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
-        // 사용자 생성
+        // 사용자 생성 (비밀번호 암호화)
         User user = User.builder()
                 .email("test@test.com")
-                .password("password")
+                .password(passwordEncoder.encode("password")) // 비밀번호 암호화
                 .name("테스트 사용자")
                 .build();
         User savedUser = userRepository.save(user);

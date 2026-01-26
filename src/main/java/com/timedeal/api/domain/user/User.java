@@ -51,7 +51,14 @@ public class User {
         this.name = name;
     }
     
-    // 테스트를 위한 setter
+    /**
+     * 테스트 전용 메서드: ID 설정
+     * 
+     * 주의: 이 메서드는 테스트 코드에서만 사용됩니다.
+     * 프로덕션 코드에서는 사용하지 않아야 합니다.
+     * 
+     * @param id: 설정할 ID
+     */
     public void setId(Long id) {
         this.id = id;
     }

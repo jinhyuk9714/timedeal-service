@@ -9,9 +9,18 @@ spring:
         format_sql: true
         show_sql: true
         dialect: org.hibernate.dialect.MySQLDialect
+  # 테스트 환경에서 Security 자동 구성 제외
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration
 
 logging:
   level:
     org.hibernate.SQL: DEBUG
     org.hibernate.type.descriptor.sql.BasicBinder: TRACE
     p6spy: INFO
+
+# 테스트용 JWT 설정
+jwt:
+  secret: test-secret-key-for-testing-only-must-be-at-least-256-bits-long
+  expiration: 86400000
