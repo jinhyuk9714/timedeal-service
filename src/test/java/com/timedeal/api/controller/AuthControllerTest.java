@@ -1,6 +1,7 @@
 package com.timedeal.api.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.timedeal.api.common.ApiPaths;
 import com.timedeal.api.dto.auth.LoginRequest;
 import com.timedeal.api.dto.auth.LoginResponse;
 import com.timedeal.api.service.AuthService;
@@ -75,7 +76,7 @@ class AuthControllerTest {
         when(authService.login(any(LoginRequest.class))).thenReturn(response);
 
         // when & then: HTTP 요청 실행 및 검증
-        mockMvc.perform(post("/api/auth/login")
+        mockMvc.perform(post(ApiPaths.AUTH + "/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
@@ -93,7 +94,7 @@ class AuthControllerTest {
         // email이 null이므로 유효성 검증 실패 예상
 
         // when & then: HTTP 요청 실행 및 검증
-        mockMvc.perform(post("/api/auth/login")
+        mockMvc.perform(post(ApiPaths.AUTH + "/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest()); // 400 상태 코드
@@ -106,7 +107,7 @@ class AuthControllerTest {
         String token = "jwt-token";
 
         // when & then: HTTP 요청 실행 및 검증
-        mockMvc.perform(post("/api/auth/logout")
+        mockMvc.perform(post(ApiPaths.AUTH + "/logout")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk());
     }
@@ -115,7 +116,7 @@ class AuthControllerTest {
     @DisplayName("로그아웃 실패 - Authorization 헤더 없음")
     void logout_NoAuthorizationHeader_Fail() throws Exception {
         // when & then: Authorization 헤더가 없으므로 400 반환
-        mockMvc.perform(post("/api/auth/logout"))
+        mockMvc.perform(post(ApiPaths.AUTH + "/logout"))
                 .andExpect(status().isBadRequest());
     }
 
@@ -123,7 +124,7 @@ class AuthControllerTest {
     @DisplayName("로그아웃 실패 - Bearer 접두사 없음")
     void logout_NoBearerPrefix_Fail() throws Exception {
         // when & then: Bearer 접두사가 없으므로 400 반환
-        mockMvc.perform(post("/api/auth/logout")
+        mockMvc.perform(post(ApiPaths.AUTH + "/logout")
                         .header("Authorization", "jwt-token"))
                 .andExpect(status().isBadRequest());
     }

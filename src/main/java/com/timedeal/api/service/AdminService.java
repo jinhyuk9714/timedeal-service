@@ -10,6 +10,8 @@ import com.timedeal.api.exception.BusinessException;
 import com.timedeal.api.exception.ErrorCode;
 import com.timedeal.api.infrastructure.persistence.order.OrderRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,14 +39,14 @@ public class AdminService {
     private final UserService userService;
 
     /**
-     * 전체 주문 목록 조회 (관리자 전용)
+     * 전체 주문 목록 조회 (관리자 전용, 페이징)
      * 
-     * @return List<OrderResponse> (모든 주문 목록)
+     * @param pageable: 페이징 정보 (page, size, sort)
+     * @return Page<OrderResponse> (모든 주문 목록 + 페이징 정보)
      */
-    public List<OrderResponse> getAllOrders() {
-        return orderRepository.findAll().stream()
-                .map(OrderResponse::new)
-                .toList();
+    public Page<OrderResponse> getAllOrders(Pageable pageable) {
+        return orderRepository.findAll(pageable)
+                .map(OrderResponse::new);
     }
 
     /**
@@ -85,11 +87,12 @@ public class AdminService {
     }
 
     /**
-     * 전체 사용자 목록 조회 (관리자 전용)
+     * 전체 사용자 목록 조회 (관리자 전용, 페이징)
      * 
-     * @return List<UserResponse> (모든 사용자 목록)
+     * @param pageable: 페이징 정보 (page, size, sort)
+     * @return Page<UserResponse> (모든 사용자 목록 + 페이징 정보)
      */
-    public List<UserResponse> getAllUsers() {
-        return userService.getAllUsers();
+    public Page<UserResponse> getAllUsers(Pageable pageable) {
+        return userService.getAllUsers(pageable);
     }
 }

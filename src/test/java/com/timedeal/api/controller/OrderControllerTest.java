@@ -1,14 +1,11 @@
 package com.timedeal.api.controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.timedeal.api.domain.item.Item;
-import com.timedeal.api.domain.order.Order;
-import com.timedeal.api.domain.order.OrderStatus;
-import com.timedeal.api.domain.user.User;
+import com.timedeal.api.common.ApiPaths;
 import com.timedeal.api.dto.order.OrderRequest;
 import com.timedeal.api.dto.order.OrderResponse;
-import com.timedeal.api.infrastructure.security.JwtTokenProvider;
 import com.timedeal.api.service.OrderService;
+import com.timedeal.api.support.TestFixtures;
+import com.timedeal.api.support.WebTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -20,12 +17,6 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
-import java.util.Arrays;
-import java.util.List;
-
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -52,139 +43,84 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class OrderControllerTest {
 
     @Autowired
-    private MockMvc mockMvc; // HTTP 요청/응답을 시뮬레이션하는 객체
+    private MockMvc mockMvc;
 
-    private ObjectMapper objectMapper; // JSON 변환을 위한 객체
-
-    @MockitoBean
-    private OrderService orderService; // Service는 Mock으로 대체
+    private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
     @MockitoBean
-    private JwtTokenProvider jwtTokenProvider; // Security 관련 빈 Mock 처리
+    private OrderService orderService;
 
     @MockitoBean
-    private com.timedeal.api.infrastructure.security.TokenBlacklistService tokenBlacklistService; // Redis 관련 빈 Mock 처리
+    private com.timedeal.api.infrastructure.security.JwtTokenProvider jwtTokenProvider;
 
     @MockitoBean
-    private com.timedeal.api.infrastructure.security.JwtAuthenticationFilter jwtAuthenticationFilter; // JWT 필터 Mock 처리
+    private com.timedeal.api.infrastructure.security.TokenBlacklistService tokenBlacklistService;
+
+    @MockitoBean
+    private com.timedeal.api.infrastructure.security.JwtAuthenticationFilter jwtAuthenticationFilter;
 
     @BeforeEach
     void setUp() {
-        // ObjectMapper 직접 생성
-        objectMapper = new ObjectMapper();
+        objectMapper = WebTestSupport.objectMapper();
     }
 
     @Test
-    @DisplayName("주문 생성 성공 - 인증 없음")
+    @DisplayName("주문 생성 - 인증 없음 시 401")
     void createOrder_Unauthorized() throws Exception {
-        // given: 테스트 데이터
-        OrderRequest request = new OrderRequest();
-        request.setItemId(1L);
-        request.setQuantity(2);
+        OrderRequest request = TestFixtures.orderRequest(1L, 2);
 
-        // @AuthenticationPrincipal이 null이므로 Controller에서 401 반환
-        // 실제로는 SecurityContext에 인증 정보가 있어야 함
-        // 테스트에서는 Service 호출 전에 401이 반환됨
-
-        // when & then: HTTP 요청 실행 및 검증
-        mockMvc.perform(post("/api/orders")
+        mockMvc.perform(post(ApiPaths.ORDERS)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isUnauthorized()); // 401 상태 코드 (인증 없음)
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
-    @DisplayName("주문 생성 실패 - 유효성 검증 실패")
+    @DisplayName("주문 생성 - 유효성 검증 실패 시 400")
     void createOrder_ValidationFailed() throws Exception {
-        // given: 잘못된 데이터 (itemId가 null)
         OrderRequest request = new OrderRequest();
         request.setQuantity(2);
-        // itemId가 null이므로 유효성 검증 실패 예상
 
-        // when & then: HTTP 요청 실행 및 검증
-        mockMvc.perform(post("/api/orders")
+        mockMvc.perform(post(ApiPaths.ORDERS)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isBadRequest()); // 400 상태 코드
+                .andExpect(status().isBadRequest());
     }
 
     @Test
-    @DisplayName("주문 조회 성공")
+    @DisplayName("주문 단건 조회 성공")
     void getOrder_Success() throws Exception {
-        // given: Mock 데이터 - 실제 Order 객체 생성
-        User user = User.builder()
-                .email("test@test.com")
-                .password("password")
-                .name("테스트 사용자")
-                .build();
-        user.setId(1L);
-
-        Item item = Item.builder()
-                .name("타임딜 상품")
-                .price(new BigDecimal("10000"))
-                .openTime(LocalDateTime.now().plusHours(1))
-                .build();
-        item.setId(1L);
-
-        Order order = Order.builder()
-                .user(user)
-                .item(item)
-                .status(OrderStatus.ORDERED)
-                .quantity(2)
-                .build();
-        order.setId(1L);
-
+        var user = TestFixtures.user(1L);
+        var item = TestFixtures.itemOpened(1L);
+        var order = TestFixtures.order(user, item, 2, com.timedeal.api.domain.order.OrderStatus.ORDERED, 1L);
         OrderResponse response = new OrderResponse(order);
 
         when(orderService.getOrder(eq(1L))).thenReturn(response);
 
-        // when & then: HTTP 요청 실행 및 검증
-        mockMvc.perform(get("/api/orders/1"))
-                .andExpect(status().isOk());
+        mockMvc.perform(get(ApiPaths.ORDERS + "/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1))
+                .andExpect(jsonPath("$.quantity").value(2));
     }
 
     @Test
-    @DisplayName("사용자별 주문 목록 조회 - 인증 없음")
+    @DisplayName("내 주문 목록 조회 - 인증 없음 시 401")
     void getMyOrders_Unauthorized() throws Exception {
-        // given: @AuthenticationPrincipal이 null이므로 401 반환
-
-        // when & then: HTTP 요청 실행 및 검증
-        mockMvc.perform(get("/api/orders/my-orders"))
-                .andExpect(status().isUnauthorized()); // 401 상태 코드
+        mockMvc.perform(get(ApiPaths.ORDERS + "/my-orders"))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
     @DisplayName("주문 취소 성공")
     void cancelOrder_Success() throws Exception {
-        // given: Mock 데이터 - 실제 Order 객체 생성
-        User user = User.builder()
-                .email("test@test.com")
-                .password("password")
-                .name("테스트 사용자")
-                .build();
-        user.setId(1L);
-
-        Item item = Item.builder()
-                .name("타임딜 상품")
-                .price(new BigDecimal("10000"))
-                .openTime(LocalDateTime.now().plusHours(1))
-                .build();
-        item.setId(1L);
-
-        Order order = Order.builder()
-                .user(user)
-                .item(item)
-                .status(OrderStatus.CANCELED)
-                .quantity(2)
-                .build();
-        order.setId(1L);
-
+        var user = TestFixtures.user(1L);
+        var item = TestFixtures.itemOpened(1L);
+        var order = TestFixtures.order(user, item, 2, com.timedeal.api.domain.order.OrderStatus.CANCELED, 1L);
         OrderResponse response = new OrderResponse(order);
 
         when(orderService.cancelOrder(eq(1L))).thenReturn(response);
 
-        // when & then: HTTP 요청 실행 및 검증
-        mockMvc.perform(patch("/api/orders/1/cancel"))
+        mockMvc.perform(patch(ApiPaths.ORDERS + "/1/cancel"))
                 .andExpect(status().isOk());
     }
 }

@@ -17,6 +17,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -24,6 +28,7 @@ import java.util.Arrays;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 /**
@@ -93,7 +98,7 @@ class AdminServiceTest {
     }
 
     @Test
-    @DisplayName("전체 주문 목록 조회 성공")
+    @DisplayName("전체 주문 목록 조회 성공 (페이징)")
     void getAllOrders_Success() {
         // given: 여러 주문 데이터
         Order order1 = Order.builder()
@@ -113,16 +118,19 @@ class AdminServiceTest {
         order2.setId(2L);
 
         List<Order> orders = Arrays.asList(order1, order2);
+        Pageable pageable = PageRequest.of(0, 20);
+        Page<Order> orderPage = new PageImpl<>(orders, pageable, orders.size());
 
-        when(orderRepository.findAll()).thenReturn(orders);
+        when(orderRepository.findAll(any(Pageable.class))).thenReturn(orderPage);
 
         // when: 전체 주문 목록 조회
-        List<OrderResponse> responses = adminService.getAllOrders();
+        Page<OrderResponse> responses = adminService.getAllOrders(pageable);
 
         // then: 검증
         assertThat(responses).isNotNull();
-        assertThat(responses).hasSize(2);
-        verify(orderRepository, times(1)).findAll();
+        assertThat(responses.getContent()).hasSize(2);
+        assertThat(responses.getTotalElements()).isEqualTo(2);
+        verify(orderRepository, times(1)).findAll(any(Pageable.class));
     }
 
     @Test
@@ -169,18 +177,20 @@ class AdminServiceTest {
     }
 
     @Test
-    @DisplayName("전체 사용자 목록 조회 성공")
+    @DisplayName("전체 사용자 목록 조회 성공 (페이징)")
     void getAllUsers_Success() {
         // given
-        List<UserResponse> userResponses = Arrays.asList(userResponse);
-        when(userService.getAllUsers()).thenReturn(userResponses);
+        Pageable pageable = PageRequest.of(0, 20);
+        Page<UserResponse> userResponsePage = new PageImpl<>(Arrays.asList(userResponse), pageable, 1);
+        when(userService.getAllUsers(any(Pageable.class))).thenReturn(userResponsePage);
 
         // when: 전체 사용자 목록 조회
-        List<UserResponse> responses = adminService.getAllUsers();
+        Page<UserResponse> responses = adminService.getAllUsers(pageable);
 
         // then: 검증
         assertThat(responses).isNotNull();
-        assertThat(responses).hasSize(1);
-        verify(userService, times(1)).getAllUsers();
+        assertThat(responses.getContent()).hasSize(1);
+        assertThat(responses.getTotalElements()).isEqualTo(1);
+        verify(userService, times(1)).getAllUsers(any(Pageable.class));
     }
 }

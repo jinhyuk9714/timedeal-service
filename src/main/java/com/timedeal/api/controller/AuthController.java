@@ -1,8 +1,15 @@
 package com.timedeal.api.controller;
 
+import com.timedeal.api.common.ApiPaths;
 import com.timedeal.api.dto.auth.LoginRequest;
 import com.timedeal.api.dto.auth.LoginResponse;
 import com.timedeal.api.service.AuthService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -30,10 +37,11 @@ import org.springframework.web.bind.annotation.RestController;
  * 
  * 인증 관련 엔드포인트:
  * - 로그인: JWT 토큰 발급
- * - (향후 확장 가능: 회원가입, 토큰 갱신 등)
+ * - 로그아웃: JWT 토큰 블랙리스트 추가
  */
+@Tag(name = "인증 API", description = "로그인, 로그아웃 등 인증 관련 API")
 @RestController
-@RequestMapping("/api/auth")
+@RequestMapping(ApiPaths.AUTH)
 @RequiredArgsConstructor
 public class AuthController {
 
@@ -66,8 +74,22 @@ public class AuthController {
      * 3. JWT 토큰 생성 및 반환
      * 
      * @param request: 로그인 요청 (이메일, 비밀번호)
-     * @return LoginResponse (JWT 토큰, 토큰 타입)
+     * @return LoginResponse (JWT 토큰, 토큰 타입, 사용자 역할)
      */
+    @Operation(
+            summary = "로그인",
+            description = "이메일과 비밀번호로 로그인하여 JWT 토큰을 발급받습니다. " +
+                    "응답에 포함된 role 필드를 확인하여 사용자 역할(USER/ADMIN)을 구분할 수 있습니다."
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "로그인 성공",
+                    content = @Content(schema = @Schema(implementation = LoginResponse.class))
+            ),
+            @ApiResponse(responseCode = "400", description = "잘못된 요청 (이메일 형식 오류, 필수 필드 누락)"),
+            @ApiResponse(responseCode = "401", description = "인증 실패 (이메일 또는 비밀번호 불일치)")
+    })
     @PostMapping("/login")
     public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
         LoginResponse response = authService.login(request);
@@ -97,6 +119,17 @@ public class AuthController {
      * @param request: HTTP 요청 (토큰은 헤더에서 추출)
      * @return 200 OK (성공 응답)
      */
+    @Operation(
+            summary = "로그아웃",
+            description = "현재 사용자의 JWT 토큰을 블랙리스트에 추가하여 로그아웃합니다. " +
+                    "Authorization 헤더에 Bearer 토큰이 필요합니다."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "로그아웃 성공"),
+            @ApiResponse(responseCode = "400", description = "잘못된 요청 (토큰이 없거나 형식이 잘못됨)"),
+            @ApiResponse(responseCode = "401", description = "인증되지 않은 사용자")
+    })
+    @io.swagger.v3.oas.annotations.security.SecurityRequirement(name = "bearerAuth")
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(jakarta.servlet.http.HttpServletRequest request) {
         // Authorization 헤더에서 토큰 추출

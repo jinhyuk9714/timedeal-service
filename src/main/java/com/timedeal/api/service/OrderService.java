@@ -12,6 +12,8 @@ import com.timedeal.api.exception.ErrorCode;
 import com.timedeal.api.infrastructure.persistence.order.OrderRepository;
 import com.timedeal.api.infrastructure.persistence.stock.StockRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -118,10 +120,16 @@ public class OrderService {
         return new OrderResponse(order);
     }
     
-    public List<OrderResponse> getUserOrders(Long userId) {
-        return orderRepository.findByUserId(userId).stream()
-                .map(OrderResponse::new)
-                .toList();
+    /**
+     * 사용자별 주문 목록 조회 (페이징)
+     * 
+     * @param userId: 사용자 ID
+     * @param pageable: 페이징 정보 (page, size, sort)
+     * @return Page<OrderResponse> (사용자의 주문 목록 + 페이징 정보)
+     */
+    public Page<OrderResponse> getUserOrders(Long userId, Pageable pageable) {
+        Page<Order> orderPage = orderRepository.findByUserId(userId, pageable);
+        return orderPage.map(OrderResponse::new);
     }
     
     /**

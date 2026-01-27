@@ -48,6 +48,9 @@ dependencies {
     // P6Spy (쿼리 로그)
     implementation 'p6spy:p6spy:3.9.1'
     
+    // Swagger/OpenAPI (Spring Boot 4.0.2 호환)
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.1'
+    
     // Testcontainers
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test' // Spring Boot 4.0에서 필요

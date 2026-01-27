@@ -10,6 +10,16 @@ spring:
   profiles:
     active: local
 
+  # 페이징 기본 설정
+  data:
+    web:
+      pageable:
+        default-page-size: 20  # 기본 페이지 크기
+        max-page-size: 100      # 최대 페이지 크기
+        page-parameter: page    # 페이지 번호 파라미터명
+        size-parameter: size    # 페이지 크기 파라미터명
+        sort: id,desc           # 기본 정렬 (ID 내림차순)
+
   datasource:
     driver-class-name: com.p6spy.engine.spy.P6SpyDriver
     url: jdbc:p6spy:mysql://localhost:3306/timedeal?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
@@ -36,3 +46,12 @@ logging:
     org.hibernate.SQL: DEBUG
     org.hibernate.type.descriptor.sql.BasicBinder: TRACE
     p6spy: INFO
+
+# Swagger/OpenAPI 설정
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha

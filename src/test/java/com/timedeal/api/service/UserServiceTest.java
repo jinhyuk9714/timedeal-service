@@ -14,6 +14,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.Arrays;
@@ -66,7 +70,7 @@ class UserServiceTest {
     }
 
     @Test
-    @DisplayName("전체 사용자 목록 조회 성공")
+    @DisplayName("전체 사용자 목록 조회 성공 (페이징)")
     void getAllUsers_Success() {
         // given: 여러 사용자 데이터
         User user1 = User.builder()
@@ -84,32 +88,38 @@ class UserServiceTest {
         user2.setId(2L);
 
         List<User> users = Arrays.asList(user1, user2);
+        Pageable pageable = PageRequest.of(0, 20);
+        Page<User> userPage = new PageImpl<>(users, pageable, users.size());
 
-        when(userRepository.findAll()).thenReturn(users);
+        when(userRepository.findAll(any(Pageable.class))).thenReturn(userPage);
 
         // when: 전체 사용자 목록 조회
-        List<UserResponse> responses = userService.getAllUsers();
+        Page<UserResponse> responses = userService.getAllUsers(pageable);
 
         // then: 검증
         assertThat(responses).isNotNull();
-        assertThat(responses).hasSize(2);
-        assertThat(responses.get(0).getEmail()).isEqualTo("user1@test.com");
-        assertThat(responses.get(1).getEmail()).isEqualTo("user2@test.com");
-        verify(userRepository, times(1)).findAll();
+        assertThat(responses.getContent()).hasSize(2);
+        assertThat(responses.getContent().get(0).getEmail()).isEqualTo("user1@test.com");
+        assertThat(responses.getContent().get(1).getEmail()).isEqualTo("user2@test.com");
+        assertThat(responses.getTotalElements()).isEqualTo(2);
+        verify(userRepository, times(1)).findAll(any(Pageable.class));
     }
 
     @Test
-    @DisplayName("전체 사용자 목록 조회 - 빈 리스트")
+    @DisplayName("전체 사용자 목록 조회 - 빈 리스트 (페이징)")
     void getAllUsers_EmptyList() {
         // given: 사용자가 없는 경우
-        when(userRepository.findAll()).thenReturn(List.of());
+        Pageable pageable = PageRequest.of(0, 20);
+        Page<User> emptyPage = new PageImpl<>(List.of(), pageable, 0);
+        when(userRepository.findAll(any(Pageable.class))).thenReturn(emptyPage);
 
         // when: 전체 사용자 목록 조회
-        List<UserResponse> responses = userService.getAllUsers();
+        Page<UserResponse> responses = userService.getAllUsers(pageable);
 
         // then: 검증
         assertThat(responses).isNotNull();
-        assertThat(responses).isEmpty();
-        verify(userRepository, times(1)).findAll();
+        assertThat(responses.getContent()).isEmpty();
+        assertThat(responses.getTotalElements()).isEqualTo(0);
+        verify(userRepository, times(1)).findAll(any(Pageable.class));
     }
 }

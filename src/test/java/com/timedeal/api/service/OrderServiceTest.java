@@ -8,6 +8,7 @@ import com.timedeal.api.domain.user.User;
 import com.timedeal.api.dto.order.OrderRequest;
 import com.timedeal.api.dto.order.OrderResponse;
 import com.timedeal.api.exception.BusinessException;
+import com.timedeal.api.support.TestFixtures;
 import com.timedeal.api.exception.ErrorCode;
 import com.timedeal.api.infrastructure.persistence.order.OrderRepository;
 import com.timedeal.api.infrastructure.persistence.stock.StockRepository;
@@ -19,7 +20,11 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.math.BigDecimal;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -27,6 +32,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
 
 /**
@@ -63,30 +69,10 @@ class OrderServiceTest {
 
     @BeforeEach
     void setUp() {
-        // 테스트 데이터 준비
-        user = User.builder()
-                .email("test@test.com")
-                .password("password")
-                .name("테스트 사용자")
-                .build();
-        user.setId(1L);
-
-        item = Item.builder()
-                .name("타임딜 상품")
-                .price(new BigDecimal("10000"))
-                .openTime(LocalDateTime.now().minusHours(1)) // 이미 오픈된 상품
-                .build();
-        item.setId(1L);
-
-        stock = Stock.builder()
-                .item(item)
-                .quantity(100)
-                .build();
-        stock.setId(1L);
-
-        orderRequest = new OrderRequest();
-        orderRequest.setItemId(1L);
-        orderRequest.setQuantity(2);
+        user = TestFixtures.user(1L);
+        item = TestFixtures.itemOpened(1L);
+        stock = TestFixtures.stock(item, 100, 1L);
+        orderRequest = TestFixtures.orderRequest(1L, 2);
     }
 
     @Test
@@ -124,16 +110,74 @@ class OrderServiceTest {
     }
 
     @Test
+    @DisplayName("주문 생성 시 비관적 락(findByItemIdWithLock) 사용, 일반 조회(findByItemId) 미사용")
+    void createOrder_비관적_락_메서드_사용_검증() {
+        when(userService.findById(1L)).thenReturn(user);
+        when(itemService.findById(1L)).thenReturn(item);
+        when(stockRepository.findByItemIdWithLock(1L)).thenReturn(Optional.of(stock));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> {
+            Order o = inv.getArgument(0);
+            Order saved = Order.builder()
+                    .user(o.getUser())
+                    .item(o.getItem())
+                    .status(o.getStatus())
+                    .quantity(o.getQuantity())
+                    .build();
+            saved.setId(1L);
+            return saved;
+        });
+
+        orderService.createOrder(1L, orderRequest);
+
+        // 비관적 락 메서드가 호출되어야 함
+        verify(stockRepository, times(1)).findByItemIdWithLock(1L);
+        // 일반 조회는 주문 생성 경로에서 호출되지 않음 (취소 시에만 사용)
+        verify(stockRepository, never()).findByItemId(anyLong());
+    }
+
+    @Test
+    @DisplayName("주문 단건 조회 성공")
+    void getOrder_Success() {
+        Order order = TestFixtures.order(user, item, 2, OrderStatus.ORDERED, 1L);
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+
+        OrderResponse response = orderService.getOrder(1L);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getId()).isEqualTo(1L);
+        assertThat(response.getQuantity()).isEqualTo(2);
+        assertThat(response.getStatus()).isEqualTo(OrderStatus.ORDERED);
+    }
+
+    @Test
+    @DisplayName("주문 단건 조회 실패 - 없음")
+    void getOrder_NotFound() {
+        when(orderRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> orderService.getOrder(999L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining(ErrorCode.ORDER_NOT_FOUND.getMessage());
+    }
+
+    @Test
+    @DisplayName("사용자별 주문 목록 조회 성공(페이징)")
+    void getUserOrders_Success() {
+        Order order = TestFixtures.order(user, item, 2, OrderStatus.ORDERED, 1L);
+        Pageable pageable = PageRequest.of(0, 20);
+        Page<Order> orderPage = new PageImpl<>(List.of(order), pageable, 1);
+        when(orderRepository.findByUserId(1L, pageable)).thenReturn(orderPage);
+
+        Page<OrderResponse> result = orderService.getUserOrders(1L, pageable);
+
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getTotalElements()).isEqualTo(1);
+        assertThat(result.getContent().get(0).getQuantity()).isEqualTo(2);
+    }
+
+    @Test
     @DisplayName("타임딜 오픈 전 주문 시도 - 실패")
     void createOrder_BeforeTimeDealOpens_Fail() {
-        // given: 아직 오픈되지 않은 상품
-        Item notOpenedItem = Item.builder()
-                .name("타임딜 상품")
-                .price(new BigDecimal("10000"))
-                .openTime(LocalDateTime.now().plusHours(1)) // 아직 오픈 안됨
-                .build();
-        notOpenedItem.setId(1L);
-
+        Item notOpenedItem = TestFixtures.item(1L, LocalDateTime.now().plusHours(1));
         when(userService.findById(1L)).thenReturn(user);
         when(itemService.findById(1L)).thenReturn(notOpenedItem);
 
@@ -146,12 +190,7 @@ class OrderServiceTest {
     @Test
     @DisplayName("재고 부족 시 주문 실패")
     void createOrder_InsufficientStock_Fail() {
-        // given: 재고가 부족한 상황
-        Stock lowStock = Stock.builder()
-                .item(item)
-                .quantity(1) // 재고 1개만 있음
-                .build();
-        lowStock.setId(1L);
+        Stock lowStock = TestFixtures.stock(item, 1, 1L);
 
         when(userService.findById(1L)).thenReturn(user);
         when(itemService.findById(1L)).thenReturn(item);
@@ -166,14 +205,7 @@ class OrderServiceTest {
     @Test
     @DisplayName("주문 취소 성공 - 재고 복구")
     void cancelOrder_Success_StockRestored() {
-        // given: 주문 생성
-        Order order = Order.builder()
-                .user(user)
-                .item(item)
-                .status(OrderStatus.ORDERED)
-                .quantity(5)
-                .build();
-        order.setId(1L);
+        Order order = TestFixtures.order(user, item, 5, OrderStatus.ORDERED, 1L);
 
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
         when(stockRepository.findByItemId(1L)).thenReturn(Optional.of(stock));
@@ -193,14 +225,7 @@ class OrderServiceTest {
     @Test
     @DisplayName("이미 취소된 주문 취소 시도 - 실패")
     void cancelOrder_AlreadyCanceled_Fail() {
-        // given: 이미 취소된 주문
-        Order canceledOrder = Order.builder()
-                .user(user)
-                .item(item)
-                .status(OrderStatus.CANCELED)
-                .quantity(5)
-                .build();
-        canceledOrder.setId(1L);
+        Order canceledOrder = TestFixtures.order(user, item, 5, OrderStatus.CANCELED, 1L);
 
         when(orderRepository.findById(1L)).thenReturn(Optional.of(canceledOrder));
 

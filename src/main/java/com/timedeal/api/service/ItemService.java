@@ -10,6 +10,8 @@ import com.timedeal.api.infrastructure.persistence.item.ItemRepository;
 import com.timedeal.api.infrastructure.persistence.order.OrderRepository;
 import com.timedeal.api.infrastructure.persistence.stock.StockRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -63,21 +65,21 @@ public class ItemService {
     }
     
     /**
-     * 전체 상품 목록 조회
+     * 전체 상품 목록 조회 (페이징)
      * 
-     * @return List<ItemResponse> (상품 목록 + 각 상품의 재고 수량)
+     * @param pageable: 페이징 정보 (page, size, sort)
+     * @return Page<ItemResponse> (상품 목록 + 각 상품의 재고 수량 + 페이징 정보)
      */
-    public List<ItemResponse> getAllItems() {
-        List<Item> items = itemRepository.findAll();
+    public Page<ItemResponse> getAllItems(Pageable pageable) {
+        Page<Item> itemPage = itemRepository.findAll(pageable);
         
-        return items.stream()
-                .map(item -> {
-                    // 각 상품의 재고 정보 조회
-                    Stock stock = stockRepository.findByItemId(item.getId())
-                            .orElse(null);
-                    return new ItemResponse(item, stock);
-                })
-                .toList();
+        // Page의 content를 ItemResponse로 변환
+        // 재고 정보를 포함하여 ItemResponse 생성
+        return itemPage.map(item -> {
+            Stock stock = stockRepository.findByItemId(item.getId())
+                    .orElse(null);
+            return new ItemResponse(item, stock);
+        });
     }
     
     public Item findById(Long id) {

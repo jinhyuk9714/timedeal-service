@@ -7,6 +7,8 @@ import com.timedeal.api.exception.BusinessException;
 import com.timedeal.api.exception.ErrorCode;
 import com.timedeal.api.infrastructure.persistence.user.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -60,13 +62,13 @@ public class UserService {
     }
     
     /**
-     * 전체 사용자 목록 조회 (관리자 전용)
+     * 전체 사용자 목록 조회 (관리자 전용, 페이징)
      * 
-     * @return List<UserResponse> (모든 사용자 목록)
+     * @param pageable: 페이징 정보 (page, size, sort)
+     * @return Page<UserResponse> (모든 사용자 목록 + 페이징 정보)
      */
-    public List<UserResponse> getAllUsers() {
-        return userRepository.findAll().stream()
-                .map(UserResponse::new)
-                .toList();
+    public Page<UserResponse> getAllUsers(Pageable pageable) {
+        return userRepository.findAll(pageable)
+                .map(UserResponse::new);
     }
 }

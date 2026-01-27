@@ -10,6 +10,8 @@
 6. [핵심 개념 설명](#핵심-개념-설명)
 7. [API 엔드포인트](#api-엔드포인트)
 8. [테스트 가이드](#테스트-가이드)
+9. [관련 문서](#관련-문서)
+10. [최근 업데이트 내역](#최근-업데이트-내역)
 
 ---
 
@@ -19,11 +21,14 @@
 
 ### 주요 기능
 
-- ✅ 사용자 관리 (회원가입, 조회)
-- ✅ 상품 관리 (등록, 조회)
-- ✅ 타임딜 주문 (오픈 시간 체크, 재고 관리)
-- ✅ 주문 취소 (재고 복구)
-- ✅ 동시성 제어 (비관적 락)
+- ✅ **사용자 관리**: 회원가입, 조회, 페이징
+- ✅ **상품 관리**: 등록, 조회, 수정, 삭제, 페이징
+- ✅ **타임딜 주문**: 오픈 시간 체크, 재고 관리, 주문 생성/조회/취소
+- ✅ **동시성 제어**: 비관적 락(`SELECT ... FOR UPDATE`)으로 재고 정확성 보장
+- ✅ **JWT 인증/인가**: 로그인, 로그아웃, 토큰 블랙리스트(Redis)
+- ✅ **관리자 기능**: 역할 변경, 전체 주문/사용자/상품 관리(ADMIN 전용)
+- ✅ **페이징**: 상품/주문/사용자 목록 API 페이징 지원
+- ✅ **Swagger/OpenAPI**: API 문서 자동 생성 및 Swagger UI 제공
 
 ---
 
@@ -33,13 +38,13 @@
 
 ```
 ┌─────────────────────────────────────┐
-│      Controller Layer (API)        │  ← HTTP 요청/응답 처리
+│      Controller Layer (API)         │  ← HTTP 요청/응답, ApiPaths 사용
 ├─────────────────────────────────────┤
-│      Service Layer (비즈니스 로직)   │  ← 핵심 비즈니스 로직
+│      Service Layer (비즈니스 로직)   │  ← 주문/재고/인증/관리자 로직
 ├─────────────────────────────────────┤
-│   Repository Layer (데이터 접근)    │  ← 데이터베이스 접근
+│   Repository Layer (데이터 접근)    │  ← JPA, 비관적 락 지원
 ├─────────────────────────────────────┤
-│      Domain Layer (도메인 모델)     │  ← 엔티티 및 비즈니스 규칙
+│      Domain Layer (도메인 모델)     │  ← 엔티티, UserRole 등
 └─────────────────────────────────────┘
 ```
 
@@ -48,15 +53,15 @@
 ```
 HTTP Request
     ↓
-Controller (요청 검증, DTO 변환)
+Controller (요청 검증, DTO 변환, @Valid)
     ↓
-Service (비즈니스 로직 실행)
+Service (비즈니스 로직, 트랜잭션, 비관적 락 등)
     ↓
 Repository (데이터베이스 접근)
     ↓
 Domain (엔티티 조작)
     ↓
-Database
+Database / Redis
 ```
 
 ---
@@ -65,128 +70,70 @@ Database
 
 ### 1. Controller Layer (`controller` 패키지)
 
-**역할**: HTTP 요청을 받아서 처리하고 응답을 반환
+**역할**: HTTP 요청을 받아 처리하고 응답을 반환. URL은 `ApiPaths` 상수 사용.
 
 **주요 클래스**:
 
-- `ItemController`: 상품 관련 API
-- `UserController`: 사용자 관련 API
-- `OrderController`: 주문 관련 API
+| 클래스 | 설명 |
+|--------|------|
+| `ItemController` | 상품 CRUD, 페이징 목록 |
+| `UserController` | 회원가입, 사용자 조회 |
+| `OrderController` | 주문 생성/조회/취소, 내 주문 목록(페이징), JWT 인증 필요 |
+| `AuthController` | 로그인, 로그아웃 |
+| `AdminController` | 전체 주문/사용자/상품 관리, 역할 변경, `@PreAuthorize("hasRole('ADMIN')")` |
 
-**Spring 어노테이션**:
+**주요 어노테이션**:
 
-- `@RestController`: REST API 컨트롤러
-- `@RequestMapping`: URL 매핑
-- `@GetMapping`, `@PostMapping`, `@PatchMapping`: HTTP 메서드 매핑
-- `@PathVariable`: URL 경로 변수
-- `@RequestBody`: 요청 본문을 객체로 변환
-- `@Valid`: DTO 유효성 검증
-
-**예시**:
-
-```java
-@RestController
-@RequestMapping("/api/items")
-public class ItemController {
-    @PostMapping
-    public ResponseEntity<ItemResponse> createItem(@Valid @RequestBody ItemRequest request) {
-        // ...
-    }
-}
-```
+- `@RestController`, `@RequestMapping(ApiPaths.XXX)`
+- `@PageableDefault`, `Pageable` (페이징)
+- `@ParameterObject` (Swagger + Pageable)
+- `@AuthenticationPrincipal` (주문 API 등)
 
 ---
 
 ### 2. Service Layer (`service` 패키지)
 
-**역할**: 비즈니스 로직을 처리하는 핵심 레이어
+**역할**: 비즈니스 로직 처리.
 
 **주요 클래스**:
 
-- `ItemService`: 상품 비즈니스 로직
-- `UserService`: 사용자 비즈니스 로직
-- `OrderService`: 주문 비즈니스 로직 (타임딜 시간 체크, 재고 관리)
+| 클래스 | 설명 |
+|--------|------|
+| `ItemService` | 상품 CRUD, 재고 연동, 페이징 목록 |
+| `UserService` | 회원가입, 사용자 조회, 페이징 목록 |
+| `OrderService` | 주문 생성(타임딜/재고 체크, **비관적 락**), 조회, 취소, 페이징 |
+| `AuthService` | 로그인(JWT 발급), 로그아웃(토큰 블랙리스트) |
+| `AdminService` | 상품 수정/삭제, 사용자 역할 변경, 전체 주문/사용자 페이징 |
 
-**Spring 어노테이션**:
-
-- `@Service`: 서비스 레이어 빈 등록
-- `@Transactional`: 트랜잭션 관리
-  - `readOnly = true`: 읽기 전용 트랜잭션 (성능 최적화)
-  - 메서드 레벨에서 `@Transactional` 사용 시 쓰기 트랜잭션
-
-**트랜잭션 관리**:
-
-```java
-@Service
-@Transactional(readOnly = true)  // 기본값: 읽기 전용
-public class OrderService {
-
-    @Transactional  // 이 메서드는 쓰기 트랜잭션
-    public OrderResponse createOrder(...) {
-        // 여러 DB 작업이 하나의 트랜잭션으로 처리됨
-    }
-}
-```
+**트랜잭션**: `@Transactional(readOnly = true)` 클래스 기본, 쓰기 메서드에 `@Transactional` 사용.
 
 ---
 
 ### 3. Repository Layer (`infrastructure/persistence` 패키지)
 
-**역할**: 데이터베이스 접근을 담당
+**역할**: 데이터베이스 접근.
 
 **주요 인터페이스**:
 
-- `ItemRepository`: 상품 데이터 접근
-- `UserRepository`: 사용자 데이터 접근
-- `OrderRepository`: 주문 데이터 접근
-- `StockRepository`: 재고 데이터 접근 (비관적 락 지원)
-
-**Spring Data JPA**:
-
-- `JpaRepository<Entity, ID>`를 상속받아 기본 CRUD 메서드 제공
-- 메서드 이름으로 쿼리 자동 생성
-- `@Query`: 커스텀 쿼리 작성
-- `@Lock`: 비관적 락 설정
-
-**예시**:
-
-```java
-@Repository
-public interface StockRepository extends JpaRepository<Stock, Long> {
-
-    @Lock(LockModeType.PESSIMISTIC_WRITE)  // 비관적 락
-    @Query("SELECT s FROM Stock s WHERE s.item.id = :itemId")
-    Optional<Stock> findByItemIdWithLock(@Param("itemId") Long itemId);
-}
-```
+- `ItemRepository`: 상품
+- `UserRepository`: 사용자 (`findByEmail`, `existsByEmail`)
+- `OrderRepository`: 주문 (`findByUserId(Pageable)`, `findByItemId`)
+- `StockRepository`: 재고, **비관적 락** `findByItemIdWithLock(@Lock(PESSIMISTIC_WRITE))`
 
 ---
 
 ### 4. Domain Layer (`domain` 패키지)
 
-**역할**: 비즈니스 도메인 모델과 규칙을 표현
+**주요 엔티티/Enum**:
 
-**주요 엔티티**:
+- `User`, `UserRole`(USER, ADMIN)
+- `Item`, `Stock`
+- `Order`, `OrderStatus`(ORDERED, CANCELED)
 
-- `User`: 사용자
-- `Item`: 상품
-- `Stock`: 재고
-- `Order`: 주문
-- `OrderStatus`: 주문 상태 enum
-
-**JPA 어노테이션**:
-
-- `@Entity`: JPA 엔티티
-- `@Table`: 테이블 이름 지정
-- `@Id`, `@GeneratedValue`: 기본키 설정
-- `@ManyToOne`, `@OneToOne`: 연관관계 매핑
-- `@PrePersist`, `@PreUpdate`: 생명주기 콜백
-
-**도메인 모델 관계**:
+**도메인 관계**:
 
 ```
 User (1) ──< (N) Order (N) >── (1) Item
-                                    │
                                     │ (1:1)
                                     ↓
                                   Stock
@@ -196,75 +143,38 @@ User (1) ──< (N) Order (N) >── (1) Item
 
 ### 5. DTO Layer (`dto` 패키지)
 
-**역할**: 계층 간 데이터 전송 객체
-
-**구조**:
-
-- `Request`: 클라이언트 → 서버 (요청 데이터)
-- `Response`: 서버 → 클라이언트 (응답 데이터)
-
-**주요 DTO**:
-
-- `ItemRequest`, `ItemResponse`
-- `UserRequest`, `UserResponse`
-- `OrderRequest`, `OrderResponse`
-
-**유효성 검증**:
-
-- `@NotNull`, `@NotBlank`, `@Email`, `@Positive` 등
-- Controller에서 `@Valid`로 검증 활성화
+- **item**: `ItemRequest`, `ItemResponse`
+- **user**: `UserRequest`, `UserResponse`
+- **order**: `OrderRequest`, `OrderResponse`
+- **auth**: `LoginRequest`, `LoginResponse`
+- **admin**: `ChangeRoleRequest`
 
 ---
 
 ### 6. Exception Layer (`exception` 패키지)
 
-**역할**: 예외 처리 및 에러 응답 관리
+- `BusinessException`, `ErrorCode`, `ErrorResponse`, `GlobalExceptionHandler`
+- `MethodArgumentNotValidException` / `BindException` → 400, `INVALID_INPUT_VALUE`
 
-**주요 클래스**:
+---
 
-- `BusinessException`: 비즈니스 예외
-- `ErrorCode`: 에러 코드 enum
-- `ErrorResponse`: 에러 응답 DTO
-- `GlobalExceptionHandler`: 전역 예외 처리
+### 7. Common & Infrastructure
 
-**예외 처리 흐름**:
-
-```
-비즈니스 로직에서 예외 발생
-    ↓
-BusinessException 던짐
-    ↓
-GlobalExceptionHandler가 캐치
-    ↓
-ErrorResponse로 변환하여 반환
-```
+- **common**: `ApiPaths` — API 경로 상수 (`/api/items`, `/api/orders` 등)
+- **infrastructure/config**: `QuerydslConfig`, `RedisConfig`, `SwaggerConfig`, `SpringDocQuerydslFixConfig`
+- **infrastructure/security**: `JwtTokenProvider`, `JwtAuthenticationFilter`, `TokenBlacklistService`, `SecurityConfig`
 
 ---
 
 ## 주요 기술 스택
 
-### Backend
-
-- **Spring Boot 4.0.2**: 애플리케이션 프레임워크
-- **Spring Data JPA**: 데이터베이스 접근
-- **Hibernate 7.x**: ORM 프레임워크
-- **Querydsl 5.1.0**: 타입 안전한 쿼리 작성
-- **MySQL 8.0**: 관계형 데이터베이스
-- **Redis 7**: 캐시/세션 저장소 (향후 사용)
-
-### Build & Test
-
-- **Gradle 8.14**: 빌드 도구
-- **JUnit 5**: 단위 테스트
-- **Testcontainers 1.20.4**: 통합 테스트 (Docker 컨테이너)
-- **Mockito**: Mock 객체 생성 및 검증
-- **Jackson**: JSON 직렬화/역직렬화 (테스트용)
-
-### 기타
-
-- **Lombok**: 보일러플레이트 코드 제거
-- **P6Spy**: SQL 쿼리 로깅
-- **Jakarta EE**: Java EE의 후속 버전
+| 구분 | 기술 |
+|------|------|
+| **Backend** | Spring Boot 4.0.2, Spring Data JPA, Hibernate 7.x, Querydsl 5.1.0, MySQL 8.0, Redis 7(JWT 블랙리스트) |
+| **인증** | JWT(jjwt), BCrypt, Spring Security |
+| **문서/UI** | Springdoc OpenAPI 3.0.1 (Swagger UI) |
+| **Build/Test** | Gradle 8.14, JUnit 5, Mockito, Testcontainers 1.20.4 |
+| **기타** | Lombok, P6Spy, Jakarta EE |
 
 ---
 
@@ -272,189 +182,143 @@ ErrorResponse로 변환하여 반환
 
 ```
 timedeal-service/
-├── src/
-│   ├── main/
-│   │   ├── java/com/timedeal/api/
-│   │   │   ├── controller/          # REST API 컨트롤러
-│   │   │   │   ├── ItemController.java
-│   │   │   │   ├── UserController.java
-│   │   │   │   └── OrderController.java
-│   │   │   ├── service/             # 비즈니스 로직
-│   │   │   │   ├── ItemService.java
-│   │   │   │   ├── UserService.java
-│   │   │   │   └── OrderService.java
-│   │   │   ├── domain/              # 도메인 모델
-│   │   │   │   ├── item/
-│   │   │   │   │   └── Item.java
-│   │   │   │   ├── user/
-│   │   │   │   │   └── User.java
-│   │   │   │   ├── order/
-│   │   │   │   │   ├── Order.java
-│   │   │   │   │   └── OrderStatus.java
-│   │   │   │   └── stock/
-│   │   │   │       └── Stock.java
-│   │   │   ├── dto/                 # 데이터 전송 객체
-│   │   │   │   ├── item/
-│   │   │   │   │   ├── ItemRequest.java
-│   │   │   │   │   └── ItemResponse.java
-│   │   │   │   ├── user/
-│   │   │   │   │   ├── UserRequest.java
-│   │   │   │   │   └── UserResponse.java
-│   │   │   │   └── order/
-│   │   │   │       ├── OrderRequest.java
-│   │   │   │       └── OrderResponse.java
-│   │   │   ├── exception/           # 예외 처리
-│   │   │   │   ├── BusinessException.java
-│   │   │   │   ├── ErrorCode.java
-│   │   │   │   ├── ErrorResponse.java
-│   │   │   │   └── GlobalExceptionHandler.java
-│   │   │   ├── infrastructure/      # 인프라스트럭처
-│   │   │   │   ├── config/
-│   │   │   │   │   └── QuerydslConfig.java
-│   │   │   │   └── persistence/
-│   │   │   │       ├── item/
-│   │   │   │       │   └── ItemRepository.java
-│   │   │   │       ├── user/
-│   │   │   │       │   └── UserRepository.java
-│   │   │   │       ├── order/
-│   │   │   │       │   └── OrderRepository.java
-│   │   │   │       └── stock/
-│   │   │   │           └── StockRepository.java
-│   │   │   └── TimeDealApplication.java
-│   │   └── resources/
-│   │       ├── application.yml      # 설정 파일
-│   │       └── spy.properties      # P6Spy 설정
-│   └── test/
-│       └── java/com/timedeal/api/
-│           ├── controller/          # Controller 테스트
-│           │   └── ItemControllerTest.java
-│           ├── service/             # Service 테스트
-│           │   └── OrderServiceTest.java
-│           ├── integration/         # 통합 테스트
-│           │   └── TimeDealIntegrationTest.java
-│           └── TimeDealApplicationTest.java
-├── build.gradle                     # Gradle 빌드 설정
-├── settings.gradle                  # Gradle 프로젝트 설정
-├── compose.yaml                     # Docker Compose 설정
-└── README.md                        # 프로젝트 설명
+├── src/main/java/com/timedeal/api/
+│   ├── common/
+│   │   └── ApiPaths.java              # API 경로 상수
+│   ├── controller/
+│   │   ├── ItemController.java
+│   │   ├── UserController.java
+│   │   ├── OrderController.java
+│   │   ├── AuthController.java
+│   │   └── AdminController.java
+│   ├── service/
+│   │   ├── ItemService.java
+│   │   ├── UserService.java
+│   │   ├── OrderService.java
+│   │   ├── AuthService.java
+│   │   └── AdminService.java
+│   ├── domain/
+│   │   ├── item/Item.java
+│   │   ├── user/User.java, UserRole.java
+│   │   ├── order/Order.java, OrderStatus.java
+│   │   └── stock/Stock.java
+│   ├── dto/
+│   │   ├── item/ItemRequest.java, ItemResponse.java
+│   │   ├── user/UserRequest.java, UserResponse.java
+│   │   ├── order/OrderRequest.java, OrderResponse.java
+│   │   ├── auth/LoginRequest.java, LoginResponse.java
+│   │   └── admin/ChangeRoleRequest.java
+│   ├── exception/
+│   │   ├── BusinessException.java
+│   │   ├── ErrorCode.java
+│   │   ├── ErrorResponse.java
+│   │   └── GlobalExceptionHandler.java
+│   ├── infrastructure/
+│   │   ├── config/
+│   │   │   ├── QuerydslConfig.java
+│   │   │   ├── RedisConfig.java
+│   │   │   ├── SwaggerConfig.java
+│   │   │   └── SpringDocQuerydslFixConfig.java
+│   │   ├── persistence/
+│   │   │   ├── item/ItemRepository.java
+│   │   │   ├── user/UserRepository.java
+│   │   │   ├── order/OrderRepository.java
+│   │   │   └── stock/StockRepository.java
+│   │   └── security/
+│   │       ├── JwtTokenProvider.java
+│   │       ├── JwtAuthenticationFilter.java
+│   │       ├── TokenBlacklistService.java
+│   │       └── SecurityConfig.java
+│   └── TimeDealApplication.java
+├── src/main/resources/
+│   ├── application.yml
+│   └── spy.properties
+├── src/test/java/com/timedeal/api/
+│   ├── support/
+│   │   ├── TestFixtures.java          # 테스트 데이터 픽스처
+│   │   └── WebTestSupport.java        # ObjectMapper 등 공통 설정
+│   ├── controller/
+│   │   ├── ItemControllerTest.java
+│   │   ├── UserControllerTest.java
+│   │   ├── OrderControllerTest.java
+│   │   ├── AuthControllerTest.java
+│   │   └── AdminControllerTest.java
+│   ├── service/
+│   │   ├── ItemServiceTest.java
+│   │   ├── UserServiceTest.java
+│   │   ├── OrderServiceTest.java
+│   │   ├── AuthServiceTest.java
+│   │   └── AdminServiceTest.java
+│   ├── exception/
+│   │   └── GlobalExceptionHandlerTest.java
+│   ├── infrastructure/config/
+│   │   └── TestSecurityConfig.java
+│   ├── integration/
+│   │   ├── TimeDealIntegrationTest.java
+│   │   └── PessimisticLockIntegrationTest.java   # 비관적 락 동시성 테스트
+│   └── TimeDealApplicationTest.java
+├── build.gradle
+├── settings.gradle
+├── compose.yaml
+├── JWT_GUIDE.md
+├── PAGING_GUIDE.md
+├── PESSIMISTIC_LOCK_GUIDE.md
+├── POSTMAN_ENDPOINTS_GUIDE.md
+├── POSTMAN_SETUP_GUIDE.md
+├── PROJECT_STRUCTURE.md
+└── README-GRADLE-WRAPPER.md
 ```
 
 ---
 
 ## 핵심 개념 설명
 
-### 1. 의존성 주입 (Dependency Injection, DI)
+### 1. 의존성 주입 (DI)
 
-Spring이 객체 간 의존성을 자동으로 주입해주는 기능입니다.
+- 생성자 주입 + `@RequiredArgsConstructor`, `final` 필드 사용.
 
-**생성자 주입 방식** (권장):
+### 2. 트랜잭션
 
-```java
-@Service
-@RequiredArgsConstructor  // final 필드에 대한 생성자 자동 생성
-public class OrderService {
-    private final OrderRepository orderRepository;  // final로 선언
-    // Spring이 자동으로 OrderRepository 구현체를 주입
-}
-```
-
-**장점**:
-
-- 불변성 보장 (final 키워드)
-- 테스트 용이 (Mock 객체 주입 쉬움)
-- 순환 참조 방지
-
----
-
-### 2. 트랜잭션 (Transaction)
-
-여러 데이터베이스 작업을 하나의 작업 단위로 묶는 개념입니다.
-
-**특징**:
-
-- **원자성(Atomicity)**: 모두 성공하거나 모두 실패
-- **일관성(Consistency)**: 데이터 무결성 유지
-- **격리성(Isolation)**: 동시 실행 시 격리
-- **지속성(Durability)**: 커밋 후 영구 저장
-
-**사용 예시**:
-
-```java
-@Transactional
-public OrderResponse createOrder(...) {
-    stock.decrease(quantity);      // 1. 재고 차감
-    orderRepository.save(order);   // 2. 주문 저장
-    // 둘 중 하나라도 실패하면 전체 롤백
-}
-```
-
----
+- 쓰기 메서드에 `@Transactional`, 읽기 전용은 `@Transactional(readOnly = true)`.
 
 ### 3. 비관적 락 (Pessimistic Lock)
 
-동시성 문제를 해결하기 위한 방법입니다.
+- `StockRepository.findByItemIdWithLock()` → `SELECT ... FOR UPDATE`
+- 주문 생성 시 재고 조회·차감 구간에서만 사용. 자세한 내용은 `PESSIMISTIC_LOCK_GUIDE.md` 참고.
 
-**비관적 락**:
+### 4. JPA 영속성 컨텍스트
 
-- 데이터를 조회할 때 락을 걸어서 다른 트랜잭션이 수정하지 못하게 함
-- `SELECT ... FOR UPDATE` 쿼리 실행
-- 동시 접근이 많을 때 사용
-
-**사용 예시**:
-
-```java
-@Lock(LockModeType.PESSIMISTIC_WRITE)
-@Query("SELECT s FROM Stock s WHERE s.item.id = :itemId")
-Optional<Stock> findByItemIdWithLock(@Param("itemId") Long itemId);
-```
-
----
-
-### 4. JPA 영속성 컨텍스트 (Persistence Context)
-
-엔티티를 관리하는 영역입니다.
-
-**특징**:
-
-- 1차 캐시: 같은 엔티티를 조회하면 캐시에서 반환
-- 변경 감지: 엔티티 변경 시 자동으로 UPDATE 쿼리 실행
-- 지연 로딩: 연관 엔티티를 필요할 때만 조회
-
-**예시**:
-
-```java
-Item item = itemRepository.findById(1L);  // DB 조회
-item.setName("변경된 이름");                // 엔티티 수정
-// save() 호출 없이도 UPDATE 쿼리 자동 실행 (변경 감지)
-```
+- 1차 캐시, 변경 감지, 지연 로딩 등 JPA 기본 동작 사용.
 
 ---
 
 ## API 엔드포인트
 
-### 상품 (Items)
+| Method | URL | 설명 | 인증 |
+|--------|-----|------|------|
+| **인증** | | | |
+| POST | `/api/auth/login` | 로그인 | X |
+| POST | `/api/auth/logout` | 로그아웃 | Bearer |
+| **사용자** | | | |
+| POST | `/api/users` | 회원가입 | X |
+| GET | `/api/users/{id}` | 사용자 조회 | X |
+| **상품** | | | |
+| POST | `/api/items` | 상품 등록 | X |
+| GET | `/api/items/{id}` | 상품 조회 | X |
+| GET | `/api/items?page=&size=&sort=` | 전체 상품 목록(페이징) | X |
+| **주문** | | | |
+| POST | `/api/orders` | 주문 생성 | Bearer |
+| GET | `/api/orders/{id}` | 주문 조회 | Bearer |
+| GET | `/api/orders/my-orders?page=&size=&sort=` | 내 주문 목록(페이징) | Bearer |
+| PATCH | `/api/orders/{id}/cancel` | 주문 취소 | Bearer |
+| **관리자** | | | |
+| GET | `/api/admin/orders?page=&size=&sort=` | 전체 주문 목록(페이징) | Bearer(ADMIN) |
+| GET | `/api/admin/users?page=&size=&sort=` | 전체 사용자 목록(페이징) | Bearer(ADMIN) |
+| PUT | `/api/admin/items/{id}` | 상품 수정 | Bearer(ADMIN) |
+| DELETE | `/api/admin/items/{id}` | 상품 삭제 | Bearer(ADMIN) |
+| PATCH | `/api/admin/users/{id}/role` | 사용자 역할 변경 | Bearer(ADMIN) |
 
-| Method | URL               | 설명           |
-| ------ | ----------------- | -------------- |
-| POST   | `/api/items`      | 상품 등록      |
-| GET    | `/api/items/{id}` | 상품 조회      |
-| GET    | `/api/items`      | 전체 상품 목록 |
-
-### 사용자 (Users)
-
-| Method | URL               | 설명        |
-| ------ | ----------------- | ----------- |
-| POST   | `/api/users`      | 사용자 등록 |
-| GET    | `/api/users/{id}` | 사용자 조회 |
-
-### 주문 (Orders)
-
-| Method | URL                          | 설명               |
-| ------ | ---------------------------- | ------------------ |
-| POST   | `/api/orders/users/{userId}` | 주문 생성          |
-| GET    | `/api/orders/{id}`           | 주문 조회          |
-| GET    | `/api/orders/users/{userId}` | 사용자별 주문 목록 |
-| PATCH  | `/api/orders/{id}/cancel`    | 주문 취소          |
+**문서**: Swagger UI → `http://localhost:8080/swagger-ui.html`
 
 ---
 
@@ -462,142 +326,69 @@ item.setName("변경된 이름");                // 엔티티 수정
 
 ### 테스트 종류
 
-1. **Controller 테스트** (`controller/ItemControllerTest.java`)
-   - `@WebMvcTest`: 웹 레이어만 테스트
-   - `MockMvc`: HTTP 요청/응답 시뮬레이션
-   - `@MockitoBean`: Service를 Mock으로 대체 (Spring Boot 4.0)
-   - `ObjectMapper`: JSON 변환 (직접 생성 필요)
-
-2. **Service 단위 테스트** (`service/OrderServiceTest.java`)
-   - Service 레이어만 테스트
-   - Mockito로 Repository Mock 생성
-   - 비즈니스 로직 검증
-
-3. **통합 테스트** (`integration/TimeDealIntegrationTest.java`)
-   - `@SpringBootTest`: 전체 컨텍스트 로드
-   - Testcontainers로 실제 MySQL 사용
-   - 전체 플로우 테스트 (사용자 생성 → 상품 등록 → 주문)
+| 구분 | 위치 | 설명 |
+|------|------|------|
+| **Controller** | `controller/*Test.java` | `@WebMvcTest`, MockMvc, `ApiPaths`/`TestFixtures`/`WebTestSupport` 사용 |
+| **Service** | `service/*Test.java` | Mockito, `TestFixtures`, 비관적 락 메서드 호출 검증 포함 |
+| **Exception** | `exception/GlobalExceptionHandlerTest.java` | BusinessException, BindException, Exception 처리 검증 |
+| **통합** | `integration/TimeDealIntegrationTest.java` | Testcontainers MySQL, 전체 플로우 |
+| **비관적 락** | `integration/PessimisticLockIntegrationTest.java` | 동시 주문 시 재고 정확성 검증 |
 
 ### 테스트 실행
 
 ```bash
-# 전체 테스트 실행
+# 전체 테스트
 ./gradlew test
 
-# 특정 테스트만 실행
-./gradlew test --tests TimeDealIntegrationTest
-
-# 테스트 리포트 확인
-open build/reports/tests/test/index.html
+# 특정 클래스/메서드
+./gradlew test --tests "com.timedeal.api.service.OrderServiceTest"
+./gradlew test --tests "*.PessimisticLockIntegrationTest.동시_주문_시_재고_정확히_차감"
 ```
 
-### 테스트 작성 시 주의사항
+### 테스트 지원
 
-#### 1. Spring Boot 4.0 변경사항
+- **TestFixtures**: `user()`, `item()`, `itemOpened()`, `stock()`, `order()`, `itemRequest()`, `orderRequest()` 등
+- **WebTestSupport**: `objectMapper()` (JavaTimeModule 등록)
+- **ApiPaths**: URL 하드코딩 대신 상수 사용
 
-**@MockBean → @MockitoBean**
+### Spring Boot 4.0 테스트
 
-```java
-// Spring Boot 3.x (deprecated)
-@MockBean
-private ItemService itemService;
-
-// Spring Boot 4.0 (권장)
-@MockitoBean
-private ItemService itemService;
-```
-
-**@WebMvcTest 패키지 변경**
-
-```java
-// Spring Boot 3.x
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-
-// Spring Boot 4.0
-import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-```
-
-#### 2. ObjectMapper 직접 생성
-
-`@WebMvcTest`와 `@SpringBootTest`에서 `ObjectMapper`가 자동 주입되지 않을 수 있으므로 직접 생성:
-
-```java
-@BeforeEach
-void setUp() {
-    objectMapper = new ObjectMapper();
-    objectMapper.registerModule(new JavaTimeModule()); // LocalDateTime 지원
-}
-```
-
-#### 3. Testcontainers 설정
-
-```java
-@Container
-static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0")
-    .withDatabaseName("testdb")
-    .withUsername("test")
-    .withPassword("test");
-
-@DynamicPropertySource
-static void configureProperties(DynamicPropertyRegistry registry) {
-    registry.add("spring.datasource.url", mysql::getJdbcUrl);
-    registry.add("spring.datasource.username", mysql::getUsername);
-    registry.add("spring.datasource.password", mysql::getPassword);
-    registry.add("spring.datasource.driver-class-name", () -> "com.mysql.cj.jdbc.Driver");
-}
-```
+- `@MockitoBean` 사용 (Spring Boot 4.0)
+- `@WebMvcTest` → `org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest`
+- `testcontext.bean.override.mockito.MockitoBean` 사용
 
 ---
 
-## 학습 포인트
+## 관련 문서
 
-### Spring Boot 핵심 개념
-
-1. **@SpringBootApplication**: 애플리케이션 진입점
-2. **@ComponentScan**: 빈 자동 스캔
-3. **@Autowired**: 의존성 자동 주입
-4. **@Transactional**: 트랜잭션 관리
-5. **@RestController**: REST API 컨트롤러
-
-### JPA 핵심 개념
-
-1. **Entity**: 데이터베이스 테이블과 매핑
-2. **Repository**: 데이터 접근 추상화
-3. **연관관계**: @ManyToOne, @OneToOne
-4. **영속성 컨텍스트**: 엔티티 관리 영역
-5. **지연 로딩**: 필요할 때만 조회
-
-### 아키텍처 패턴
-
-1. **계층형 아키텍처**: Controller → Service → Repository
-2. **DTO 패턴**: 계층 간 데이터 전송
-3. **예외 처리**: 전역 예외 핸들러
-4. **의존성 주입**: 생성자 주입 방식
-
----
-
-## 추가 학습 자료
-
-- [Spring Boot 공식 문서](https://spring.io/projects/spring-boot)
-- [Spring Data JPA 문서](https://spring.io/projects/spring-data-jpa)
-- [JPA 공식 문서](https://jakarta.ee/specifications/persistence/)
-
----
+| 문서 | 설명 |
+|------|------|
+| `JWT_GUIDE.md` | JWT 인증 흐름, 로그인/로그아웃 사용법 |
+| `PAGING_GUIDE.md` | 페이징 개념, Pageable/Page 사용법, API 예시 |
+| `PESSIMISTIC_LOCK_GUIDE.md` | 비관적 락 동작 원리, SQL, 주의사항 |
+| `POSTMAN_ENDPOINTS_GUIDE.md` | 엔드포인트별 요청/응답 예시 |
+| `POSTMAN_SETUP_GUIDE.md` | Postman JWT 자동 저장 등 설정 |
 
 ---
 
 ## 최근 업데이트 내역
 
+### 2026-01-27
+
+- ✅ **공통 상수**: `ApiPaths` 도입, Controller 경로 통일
+- ✅ **테스트**: `TestFixtures`, `WebTestSupport` 추가, Controller/Service/Exception 테스트 보강
+- ✅ **비관적 락 테스트**: `OrderServiceTest.createOrder_비관적_락_메서드_사용_검증`, `PessimisticLockIntegrationTest.동시_주문_시_재고_정확히_차감` 추가
+- ✅ **GlobalExceptionHandlerTest**: BindException 기반 검증 예외 테스트 추가
+
 ### 2026-01-26
 
-- ✅ Spring Boot 4.0.2로 업그레이드
-- ✅ 테스트 코드 작성 완료 (Controller, Service, Integration)
-- ✅ `@MockitoBean` 사용 (Spring Boot 4.0 대응)
-- ✅ `ObjectMapper` 직접 생성 방식 적용
-- ✅ 모든 테스트 통과 확인
+- ✅ Spring Boot 4.0.2, JWT 인증/인가, 로그아웃(Redis 블랙리스트)
+- ✅ 관리자 기능(역할 변경, 전체 주문/사용자/상품 관리)
+- ✅ 페이징(상품/주문/사용자 목록), Swagger/OpenAPI 문서화
+- ✅ 상품 삭제 시 주문 존재 여부 검증(`ITEM_CANNOT_BE_DELETED`)
 
 ---
 
 **작성일**: 2026-01-26  
-**최종 업데이트**: 2026-01-26  
-**버전**: 1.1.0
+**최종 업데이트**: 2026-01-27  
+**버전**: 1.2.0

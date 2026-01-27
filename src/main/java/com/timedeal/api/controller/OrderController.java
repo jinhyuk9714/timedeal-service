@@ -1,16 +1,27 @@
 package com.timedeal.api.controller;
 
+import com.timedeal.api.common.ApiPaths;
 import com.timedeal.api.dto.order.OrderRequest;
 import com.timedeal.api.dto.order.OrderResponse;
 import com.timedeal.api.service.OrderService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springdoc.core.annotations.ParameterObject;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 /**
  * 주문(Order) 관련 REST API Controller
@@ -35,8 +46,9 @@ import java.util.List;
  * - 인증되지 않은 사용자는 접근 불가
  * - 테스트 환경에서는 null일 수 있으므로 null 체크 필요
  */
+@Tag(name = "주문 API", description = "주문 생성, 조회, 취소 등 주문 관련 API (인증 필요)")
 @RestController
-@RequestMapping("/api/orders")
+@RequestMapping(ApiPaths.ORDERS)
 @RequiredArgsConstructor
 public class OrderController {
 
@@ -69,6 +81,22 @@ public class OrderController {
      * @param authenticatedUserId: 인증된 사용자 ID (JWT에서 추출)
      * @return OrderResponse (생성된 주문 정보)
      */
+    @Operation(
+            summary = "주문 생성",
+            description = "타임딜 상품을 주문합니다. JWT 토큰이 필요하며, 타임딜 오픈 시간과 재고를 확인합니다. " +
+                    "동시성 제어를 위해 비관적 락을 사용합니다."
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "201",
+                    description = "주문 생성 성공",
+                    content = @Content(schema = @Schema(implementation = OrderResponse.class))
+            ),
+            @ApiResponse(responseCode = "400", description = "잘못된 요청 (타임딜 미오픈, 재고 부족, 필수 필드 누락)"),
+            @ApiResponse(responseCode = "401", description = "인증되지 않은 사용자"),
+            @ApiResponse(responseCode = "404", description = "상품을 찾을 수 없음")
+    })
+    @SecurityRequirement(name = "bearerAuth")
     @PostMapping
     public ResponseEntity<OrderResponse> createOrder(
             @Valid @RequestBody OrderRequest request,
@@ -97,18 +125,32 @@ public class OrderController {
      * @param id: 주문 ID
      * @return OrderResponse (주문 정보)
      */
+    @Operation(
+            summary = "주문 조회",
+            description = "주문 ID로 주문 정보를 조회합니다."
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "조회 성공",
+                    content = @Content(schema = @Schema(implementation = OrderResponse.class))
+            ),
+            @ApiResponse(responseCode = "404", description = "주문을 찾을 수 없음")
+    })
     @GetMapping("/{id}")
-    public ResponseEntity<OrderResponse> getOrder(@PathVariable Long id) {
+    public ResponseEntity<OrderResponse> getOrder(
+            @Parameter(description = "주문 ID", example = "1", required = true)
+            @PathVariable Long id) {
         OrderResponse response = orderService.getOrder(id);
         return ResponseEntity.ok(response);
     }
 
     /**
-     * 사용자별 주문 목록 조회 API
+     * 사용자별 주문 목록 조회 API (페이징)
      * 
      * @GetMapping("/my-orders"): 
      * - HTTP GET 요청 처리
-     * - URL: GET /api/orders/my-orders
+     * - URL: GET /api/orders/my-orders?page=0&size=10&sort=createdAt,desc
      * - JWT 토큰에서 사용자 ID를 자동으로 추출하므로 URL에 userId가 필요 없음
      * 
      * @AuthenticationPrincipal:
@@ -117,18 +159,37 @@ public class OrderController {
      * - 인증되지 않은 사용자는 null이 될 수 있음
      * 
      * @param authenticatedUserId: 인증된 사용자 ID (JWT에서 추출)
-     * @return List<OrderResponse> (사용자의 주문 목록)
+     * @param pageable: 페이징 정보 (page, size, sort)
+     * @return Page<OrderResponse> (사용자의 주문 목록 + 페이징 정보)
      */
+    @Operation(
+            summary = "내 주문 목록 조회",
+            description = "현재 로그인한 사용자의 주문 목록을 페이징하여 조회합니다. JWT 토큰이 필요합니다. " +
+                    "쿼리 파라미터: page (페이지 번호, 0부터 시작), size (페이지 크기, 기본값: 20), " +
+                    "sort (정렬 기준, 예: createdAt,desc)"
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "조회 성공",
+                    content = @Content(schema = @Schema(implementation = OrderResponse.class))
+            ),
+            @ApiResponse(responseCode = "401", description = "인증되지 않은 사용자")
+    })
+    @SecurityRequirement(name = "bearerAuth")
     @GetMapping("/my-orders")
-    public ResponseEntity<List<OrderResponse>> getMyOrders(
-            @AuthenticationPrincipal Long authenticatedUserId) {
+    public ResponseEntity<Page<OrderResponse>> getMyOrders(
+            @AuthenticationPrincipal Long authenticatedUserId,
+            @ParameterObject
+            @PageableDefault(size = 20, sort = "createdAt", direction = org.springframework.data.domain.Sort.Direction.DESC)
+            Pageable pageable) {
         
         // 인증 확인: JWT 토큰이 없으면 401 반환
         if (authenticatedUserId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
         
-        List<OrderResponse> responses = orderService.getUserOrders(authenticatedUserId);
+        Page<OrderResponse> responses = orderService.getUserOrders(authenticatedUserId, pageable);
         return ResponseEntity.ok(responses);
     }
 
@@ -145,8 +206,23 @@ public class OrderController {
      * @param id: 취소할 주문 ID
      * @return OrderResponse (취소된 주문 정보)
      */
+    @Operation(
+            summary = "주문 취소",
+            description = "주문을 취소합니다. 취소된 주문의 재고가 자동으로 복구됩니다."
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "주문 취소 성공",
+                    content = @Content(schema = @Schema(implementation = OrderResponse.class))
+            ),
+            @ApiResponse(responseCode = "400", description = "이미 취소된 주문"),
+            @ApiResponse(responseCode = "404", description = "주문을 찾을 수 없음")
+    })
     @PatchMapping("/{id}/cancel")
-    public ResponseEntity<OrderResponse> cancelOrder(@PathVariable Long id) {
+    public ResponseEntity<OrderResponse> cancelOrder(
+            @Parameter(description = "주문 ID", example = "1", required = true)
+            @PathVariable Long id) {
         OrderResponse response = orderService.cancelOrder(id);
         return ResponseEntity.ok(response);
     }

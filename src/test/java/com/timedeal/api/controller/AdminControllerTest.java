@@ -8,6 +8,7 @@ import com.timedeal.api.domain.order.OrderStatus;
 import com.timedeal.api.domain.stock.Stock;
 import com.timedeal.api.domain.user.User;
 import com.timedeal.api.domain.user.UserRole;
+import com.timedeal.api.common.ApiPaths;
 import com.timedeal.api.dto.admin.ChangeRoleRequest;
 import com.timedeal.api.dto.item.ItemRequest;
 import com.timedeal.api.dto.item.ItemResponse;
@@ -21,6 +22,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -82,7 +87,7 @@ class AdminControllerTest {
     }
 
     @Test
-    @DisplayName("전체 주문 목록 조회 성공")
+    @DisplayName("전체 주문 목록 조회 성공 (페이징)")
     void getAllOrders_Success() throws Exception {
         // given: Mock 데이터 - 실제 Order 객체 생성
         User user = User.builder()
@@ -119,13 +124,16 @@ class AdminControllerTest {
                 new OrderResponse(order1),
                 new OrderResponse(order2)
         );
+        Pageable pageable = PageRequest.of(0, 20);
+        Page<OrderResponse> orderPage = new PageImpl<>(orders, pageable, orders.size());
 
-        when(adminService.getAllOrders()).thenReturn(orders);
+        when(adminService.getAllOrders(any(Pageable.class))).thenReturn(orderPage);
 
         // when & then: HTTP 요청 실행 및 검증
-        mockMvc.perform(get("/api/admin/orders"))
+        mockMvc.perform(get(ApiPaths.ADMIN + "/orders"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$").isArray());
+                .andExpect(jsonPath("$.content").isArray())
+                .andExpect(jsonPath("$.totalElements").value(2));
     }
 
     @Test
@@ -156,7 +164,7 @@ class AdminControllerTest {
         when(adminService.updateItem(eq(1L), any(ItemRequest.class))).thenReturn(response);
 
         // when & then: HTTP 요청 실행 및 검증
-        mockMvc.perform(put("/api/admin/items/1")
+        mockMvc.perform(put(ApiPaths.ADMIN + "/items/1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk());
@@ -169,7 +177,7 @@ class AdminControllerTest {
         // deleteItem은 void 메서드이므로 when().thenReturn() 불필요
 
         // when & then: HTTP 요청 실행 및 검증
-        mockMvc.perform(delete("/api/admin/items/1"))
+        mockMvc.perform(delete(ApiPaths.ADMIN + "/items/1"))
                 .andExpect(status().isNoContent()); // 204 상태 코드
     }
 
@@ -193,14 +201,14 @@ class AdminControllerTest {
         when(adminService.changeUserRole(eq(1L), eq(UserRole.ADMIN))).thenReturn(response);
 
         // when & then: HTTP 요청 실행 및 검증
-        mockMvc.perform(patch("/api/admin/users/1/role")
+        mockMvc.perform(patch(ApiPaths.ADMIN + "/users/1/role")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk());
     }
 
     @Test
-    @DisplayName("전체 사용자 목록 조회 성공")
+    @DisplayName("전체 사용자 목록 조회 성공 (페이징)")
     void getAllUsers_Success() throws Exception {
         // given: Mock 데이터 - 실제 User 객체 생성
         User user1 = User.builder()
@@ -221,12 +229,15 @@ class AdminControllerTest {
                 new UserResponse(user1),
                 new UserResponse(user2)
         );
+        Pageable pageable = PageRequest.of(0, 20);
+        Page<UserResponse> userPage = new PageImpl<>(users, pageable, users.size());
 
-        when(adminService.getAllUsers()).thenReturn(users);
+        when(adminService.getAllUsers(any(Pageable.class))).thenReturn(userPage);
 
         // when & then: HTTP 요청 실행 및 검증
-        mockMvc.perform(get("/api/admin/users"))
+        mockMvc.perform(get(ApiPaths.ADMIN + "/users"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$").isArray());
+                .andExpect(jsonPath("$.content").isArray())
+                .andExpect(jsonPath("$.totalElements").value(2));
     }
 }

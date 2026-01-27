@@ -2,6 +2,7 @@ package com.timedeal.api.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.timedeal.api.domain.user.User;
+import com.timedeal.api.common.ApiPaths;
 import com.timedeal.api.dto.user.UserRequest;
 import com.timedeal.api.dto.user.UserResponse;
 import com.timedeal.api.service.UserService;
@@ -85,7 +86,7 @@ class UserControllerTest {
         when(userService.createUser(any(UserRequest.class))).thenReturn(response);
 
         // when & then: HTTP 요청 실행 및 검증
-        mockMvc.perform(post("/api/users")
+        mockMvc.perform(post(ApiPaths.USERS)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated()) // 201 상태 코드
@@ -107,7 +108,7 @@ class UserControllerTest {
         // @WebMvcTest에서는 유효성 검증이 제대로 작동하지 않을 수 있으므로
         // 실제로는 Service가 호출되지 않을 수 있습니다.
         // 하지만 유효성 검증 실패 시 400을 반환하는 것은 Controller의 기본 동작입니다.
-        mockMvc.perform(post("/api/users")
+        mockMvc.perform(post(ApiPaths.USERS)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest()); // 400 상태 코드 (유효성 검증 실패)
@@ -129,7 +130,7 @@ class UserControllerTest {
         when(userService.getUser(eq(1L))).thenReturn(response);
 
         // when & then: HTTP 요청 실행 및 검증
-        mockMvc.perform(get("/api/users/1"))
+        mockMvc.perform(get(ApiPaths.USERS + "/1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(1L))
                 .andExpect(jsonPath("$.email").value("test@test.com"))

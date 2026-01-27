@@ -1,24 +1,33 @@
 package com.timedeal.api.controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.timedeal.api.common.ApiPaths;
 import com.timedeal.api.dto.item.ItemRequest;
+import com.timedeal.api.dto.item.ItemResponse;
+import com.timedeal.api.exception.BusinessException;
+import com.timedeal.api.exception.ErrorCode;
 import com.timedeal.api.service.ItemService;
+import com.timedeal.api.support.TestFixtures;
+import com.timedeal.api.support.WebTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import com.timedeal.api.infrastructure.security.JwtTokenProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -42,58 +51,100 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ItemControllerTest {
 
     @Autowired
-    private MockMvc mockMvc; // HTTP 요청/응답을 시뮬레이션하는 객체
+    private MockMvc mockMvc;
 
-    private ObjectMapper objectMapper; // JSON 변환을 위한 객체
+    private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
     @MockitoBean
-    private ItemService itemService; // Service는 Mock으로 대체
-    
+    private ItemService itemService;
+
     @MockitoBean
-    private JwtTokenProvider jwtTokenProvider; // Security 관련 빈 Mock 처리
-    
+    private com.timedeal.api.infrastructure.security.JwtTokenProvider jwtTokenProvider;
+
     @MockitoBean
-    private com.timedeal.api.infrastructure.security.TokenBlacklistService tokenBlacklistService; // Redis 관련 빈 Mock 처리
-    
+    private com.timedeal.api.infrastructure.security.TokenBlacklistService tokenBlacklistService;
+
     @MockitoBean
-    private com.timedeal.api.infrastructure.security.JwtAuthenticationFilter jwtAuthenticationFilter; // JWT 필터 Mock 처리
-    
+    private com.timedeal.api.infrastructure.security.JwtAuthenticationFilter jwtAuthenticationFilter;
+
     @BeforeEach
     void setUp() {
-        // ObjectMapper 직접 생성 (LocalDateTime 지원)
-        objectMapper = new ObjectMapper();
-        objectMapper.registerModule(new JavaTimeModule());
+        objectMapper = WebTestSupport.objectMapper();
     }
 
     @Test
-    @DisplayName("상품 등록 성공 테스트")
+    @DisplayName("상품 등록 성공")
     void createItem_Success() throws Exception {
-        // given: 테스트 데이터 준비
-        ItemRequest request = new ItemRequest();
-        request.setName("테스트 상품");
-        request.setPrice(new BigDecimal("10000"));
-        request.setOpenTime(LocalDateTime.now().plusHours(1));
-        request.setStockQuantity(100);
+        ItemRequest request = TestFixtures.itemRequest("테스트 상품", new BigDecimal("10000"),
+                LocalDateTime.now().plusHours(1), 100);
+        // Mock 응답이 요청과 동일한 상품명을 갖도록 함 (실제 서비스 동작과 맞춤)
+        com.timedeal.api.domain.item.Item requestItem = com.timedeal.api.domain.item.Item.builder()
+                .name(request.getName())
+                .price(request.getPrice())
+                .openTime(request.getOpenTime())
+                .build();
+        requestItem.setId(1L);
+        var stock = TestFixtures.stock(requestItem, 100, 1L);
+        ItemResponse response = new ItemResponse(requestItem, stock);
+        when(itemService.createItem(any(ItemRequest.class))).thenReturn(response);
 
-        // when & then: HTTP 요청 실행 및 검증
-        mockMvc.perform(post("/api/items")
+        mockMvc.perform(post(ApiPaths.ITEMS)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isCreated()); // 201 상태 코드 확인
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(1))
+                .andExpect(jsonPath("$.name").value("테스트 상품"))
+                .andExpect(jsonPath("$.stockQuantity").value(100));
     }
 
     @Test
     @DisplayName("상품 등록 실패 - 유효성 검증 실패")
     void createItem_ValidationFailed() throws Exception {
-        // given: 잘못된 데이터 (상품명이 null)
         ItemRequest request = new ItemRequest();
         request.setPrice(new BigDecimal("10000"));
-        // name이 null이므로 유효성 검증 실패 예상
 
-        // when & then
-        mockMvc.perform(post("/api/items")
+        mockMvc.perform(post(ApiPaths.ITEMS)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isBadRequest()); // 400 상태 코드 확인
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("상품 단건 조회 성공")
+    void getItem_Success() throws Exception {
+        var item = TestFixtures.itemOpened(1L);
+        var stock = TestFixtures.stock(item, 100, 1L);
+        ItemResponse response = new ItemResponse(item, stock);
+        when(itemService.getItem(eq(1L))).thenReturn(response);
+
+        mockMvc.perform(get(ApiPaths.ITEMS + "/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1))
+                .andExpect(jsonPath("$.stockQuantity").value(100));
+    }
+
+    @Test
+    @DisplayName("상품 단건 조회 실패 - 없음")
+    void getItem_NotFound() throws Exception {
+        when(itemService.getItem(eq(999L)))
+                .thenThrow(new BusinessException(ErrorCode.ITEM_NOT_FOUND));
+
+        mockMvc.perform(get(ApiPaths.ITEMS + "/999"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("전체 상품 목록 조회 성공(페이징)")
+    void getAllItems_Success() throws Exception {
+        var item = TestFixtures.itemOpened(1L);
+        var stock = TestFixtures.stock(item, 100, 1L);
+        var page = new PageImpl<>(List.of(new ItemResponse(item, stock)), PageRequest.of(0, 20), 1);
+        when(itemService.getAllItems(any())).thenReturn(page);
+
+        mockMvc.perform(get(ApiPaths.ITEMS))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content").isArray())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.totalElements").value(1));
     }
 }

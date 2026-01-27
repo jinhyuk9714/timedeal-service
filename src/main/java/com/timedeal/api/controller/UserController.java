@@ -1,8 +1,17 @@
 package com.timedeal.api.controller;
 
+import com.timedeal.api.common.ApiPaths;
+
 import com.timedeal.api.dto.user.UserRequest;
 import com.timedeal.api.dto.user.UserResponse;
 import com.timedeal.api.service.UserService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -26,8 +35,9 @@ import org.springframework.web.bind.annotation.*;
  * - final 필드에 대한 생성자를 자동 생성
  * - 의존성 주입(DI)을 위한 생성자 주입 방식 사용
  */
+@Tag(name = "사용자 API", description = "회원가입, 사용자 조회 등 사용자 관련 API")
 @RestController
-@RequestMapping("/api/users")
+@RequestMapping(ApiPaths.USERS)
 @RequiredArgsConstructor
 public class UserController {
     
@@ -58,6 +68,20 @@ public class UserController {
      * - HTTP 응답을 세밀하게 제어할 수 있는 클래스
      * - HttpStatus.CREATED: 201 상태 코드 (리소스 생성 성공)
      */
+    @Operation(
+            summary = "회원가입",
+            description = "새로운 사용자를 등록합니다. 이메일, 비밀번호, 이름을 입력받아 사용자를 생성합니다. " +
+                    "비밀번호는 BCrypt로 암호화되어 저장됩니다."
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "201",
+                    description = "회원가입 성공",
+                    content = @Content(schema = @Schema(implementation = UserResponse.class))
+            ),
+            @ApiResponse(responseCode = "400", description = "잘못된 요청 (이메일 형식 오류, 필수 필드 누락)"),
+            @ApiResponse(responseCode = "409", description = "이미 존재하는 이메일")
+    })
     @PostMapping
     public ResponseEntity<UserResponse> createUser(@Valid @RequestBody UserRequest request) {
         UserResponse response = userService.createUser(request);
@@ -80,8 +104,22 @@ public class UserController {
      * - 200 OK 상태 코드와 함께 응답 반환
      * - 간단한 성공 응답에 사용
      */
+    @Operation(
+            summary = "사용자 조회",
+            description = "사용자 ID로 사용자 정보를 조회합니다."
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "조회 성공",
+                    content = @Content(schema = @Schema(implementation = UserResponse.class))
+            ),
+            @ApiResponse(responseCode = "404", description = "사용자를 찾을 수 없음")
+    })
     @GetMapping("/{id}")
-    public ResponseEntity<UserResponse> getUser(@PathVariable Long id) {
+    public ResponseEntity<UserResponse> getUser(
+            @Parameter(description = "사용자 ID", example = "1", required = true)
+            @PathVariable Long id) {
         UserResponse response = userService.getUser(id);
         return ResponseEntity.ok(response);
     }

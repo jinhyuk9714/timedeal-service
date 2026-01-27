@@ -9,6 +9,7 @@ import com.timedeal.api.exception.ErrorCode;
 import com.timedeal.api.infrastructure.persistence.item.ItemRepository;
 import com.timedeal.api.infrastructure.persistence.order.OrderRepository;
 import com.timedeal.api.infrastructure.persistence.stock.StockRepository;
+import com.timedeal.api.support.TestFixtures;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -16,6 +17,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -57,25 +60,71 @@ class ItemServiceTest {
 
     @BeforeEach
     void setUp() {
-        // 테스트 데이터 준비
-        item = Item.builder()
-                .name("타임딜 상품")
-                .price(new BigDecimal("10000"))
-                .openTime(LocalDateTime.now().plusHours(1))
-                .build();
-        item.setId(1L);
+        item = TestFixtures.item(1L, LocalDateTime.now().plusHours(1));
+        stock = TestFixtures.stock(item, 100, 1L);
+        itemRequest = TestFixtures.itemRequest("타임딜 상품", new BigDecimal("10000"),
+                LocalDateTime.now().plusHours(1), 100);
+    }
 
-        stock = Stock.builder()
-                .item(item)
-                .quantity(100)
-                .build();
-        stock.setId(1L);
+    @Test
+    @DisplayName("상품 등록 성공")
+    void createItem_Success() {
+        when(itemRepository.save(any(Item.class))).thenAnswer(inv -> {
+            Item i = inv.getArgument(0);
+            i.setId(1L);
+            return i;
+        });
+        when(stockRepository.save(any(Stock.class))).thenAnswer(inv -> {
+            Stock s = inv.getArgument(0);
+            s.setId(1L);
+            return s;
+        });
 
-        itemRequest = new ItemRequest();
-        itemRequest.setName("타임딜 상품");
-        itemRequest.setPrice(new BigDecimal("10000"));
-        itemRequest.setOpenTime(LocalDateTime.now().plusHours(1));
-        itemRequest.setStockQuantity(100);
+        ItemResponse response = itemService.createItem(itemRequest);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getName()).isEqualTo("타임딜 상품");
+        assertThat(response.getStockQuantity()).isEqualTo(100);
+        verify(itemRepository).save(any(Item.class));
+        verify(stockRepository).save(any(Stock.class));
+    }
+
+    @Test
+    @DisplayName("상품 단건 조회 성공")
+    void getItem_Success() {
+        when(itemRepository.findById(1L)).thenReturn(Optional.of(item));
+        when(stockRepository.findByItemId(1L)).thenReturn(Optional.of(stock));
+
+        ItemResponse response = itemService.getItem(1L);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getId()).isEqualTo(1L);
+        assertThat(response.getStockQuantity()).isEqualTo(100);
+    }
+
+    @Test
+    @DisplayName("상품 단건 조회 실패 - 상품 없음")
+    void getItem_ItemNotFound_Fail() {
+        when(itemRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> itemService.getItem(999L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining(ErrorCode.ITEM_NOT_FOUND.getMessage());
+    }
+
+    @Test
+    @DisplayName("전체 상품 목록 조회 성공(페이징)")
+    void getAllItems_Success() {
+        Pageable pageable = PageRequest.of(0, 20);
+        when(itemRepository.findAll(pageable))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(item), pageable, 1));
+        when(stockRepository.findByItemId(1L)).thenReturn(Optional.of(stock));
+
+        var result = itemService.getAllItems(pageable);
+
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getTotalElements()).isEqualTo(1);
+        assertThat(result.getContent().get(0).getStockQuantity()).isEqualTo(100);
     }
 
     @Test

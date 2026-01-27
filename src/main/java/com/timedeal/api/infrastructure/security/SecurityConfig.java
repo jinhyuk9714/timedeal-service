@@ -59,6 +59,9 @@ public class SecurityConfig {
                 
                 // HTTP 요청에 대한 인증/인가 규칙 설정
                 .authorizeHttpRequests(auth -> auth
+                        // Swagger UI 경로 (인증 불필요)
+                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll()
+                        
                         // 공개 엔드포인트 (인증 불필요)
                         .requestMatchers("/api/auth/**").permitAll() // 로그인, 회원가입
                         .requestMatchers("/api/users", "/api/users/**").permitAll() // 회원가입은 공개 (선택사항)
