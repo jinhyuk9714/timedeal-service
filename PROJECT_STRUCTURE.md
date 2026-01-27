@@ -29,6 +29,8 @@
 - ✅ **관리자 기능**: 역할 변경, 전체 주문/사용자/상품 관리(ADMIN 전용)
 - ✅ **페이징**: 상품/주문/사용자 목록 API 페이징 지원
 - ✅ **Swagger/OpenAPI**: API 문서 자동 생성 및 Swagger UI 제공
+- ✅ **상품 검색/필터**: Querydsl 기반 상품명(부분 일치), 가격·오픈시간 범위 필터
+- ✅ **Spring Boot Actuator**: 헬스 체크, 메트릭, 애플리케이션 정보 노출 (운영/모니터링)
 
 ---
 
@@ -115,7 +117,7 @@ Database / Redis
 
 **주요 인터페이스**:
 
-- `ItemRepository`: 상품
+- `ItemRepository`: 상품 (extends `ItemRepositoryCustom`), `ItemRepositoryImpl`: Querydsl 검색 구현
 - `UserRepository`: 사용자 (`findByEmail`, `existsByEmail`)
 - `OrderRepository`: 주문 (`findByUserId(Pageable)`, `findByItemId`)
 - `StockRepository`: 재고, **비관적 락** `findByItemIdWithLock(@Lock(PESSIMISTIC_WRITE))`
@@ -143,7 +145,7 @@ User (1) ──< (N) Order (N) >── (1) Item
 
 ### 5. DTO Layer (`dto` 패키지)
 
-- **item**: `ItemRequest`, `ItemResponse`
+- **item**: `ItemRequest`, `ItemResponse`, `ItemSearchCondition` (검색 조건)
 - **user**: `UserRequest`, `UserResponse`
 - **order**: `OrderRequest`, `OrderResponse`
 - **auth**: `LoginRequest`, `LoginResponse`
@@ -162,6 +164,7 @@ User (1) ──< (N) Order (N) >── (1) Item
 
 - **common**: `ApiPaths` — API 경로 상수 (`/api/items`, `/api/orders` 등)
 - **infrastructure/config**: `QuerydslConfig`, `RedisConfig`, `SwaggerConfig`, `SpringDocQuerydslFixConfig`
+- **infrastructure/config/health**: `DatabaseHealthIndicator`, `RedisHealthIndicator` (커스텀 헬스 체크)
 - **infrastructure/security**: `JwtTokenProvider`, `JwtAuthenticationFilter`, `TokenBlacklistService`, `SecurityConfig`
 
 ---
@@ -203,7 +206,7 @@ timedeal-service/
 │   │   ├── order/Order.java, OrderStatus.java
 │   │   └── stock/Stock.java
 │   ├── dto/
-│   │   ├── item/ItemRequest.java, ItemResponse.java
+│   │   ├── item/ItemRequest.java, ItemResponse.java, ItemSearchCondition.java
 │   │   ├── user/UserRequest.java, UserResponse.java
 │   │   ├── order/OrderRequest.java, OrderResponse.java
 │   │   ├── auth/LoginRequest.java, LoginResponse.java
@@ -218,9 +221,12 @@ timedeal-service/
 │   │   │   ├── QuerydslConfig.java
 │   │   │   ├── RedisConfig.java
 │   │   │   ├── SwaggerConfig.java
-│   │   │   └── SpringDocQuerydslFixConfig.java
+│   │   │   ├── SpringDocQuerydslFixConfig.java
+│   │   │   └── health/
+│   │   │       ├── DatabaseHealthIndicator.java
+│   │   │       └── RedisHealthIndicator.java
 │   │   ├── persistence/
-│   │   │   ├── item/ItemRepository.java
+│   │   │   ├── item/ItemRepository.java, ItemRepositoryCustom.java, ItemRepositoryImpl.java
 │   │   │   ├── user/UserRepository.java
 │   │   │   ├── order/OrderRepository.java
 │   │   │   └── stock/StockRepository.java
@@ -305,7 +311,7 @@ timedeal-service/
 | **상품** | | | |
 | POST | `/api/items` | 상품 등록 | X |
 | GET | `/api/items/{id}` | 상품 조회 | X |
-| GET | `/api/items?page=&size=&sort=` | 전체 상품 목록(페이징) | X |
+| GET | `/api/items?page=&size=&sort=&name=&minPrice=&maxPrice=&openAfter=&openBefore=` | 상품 목록(페이징·검색/필터) | X |
 | **주문** | | | |
 | POST | `/api/orders` | 주문 생성 | Bearer |
 | GET | `/api/orders/{id}` | 주문 조회 | Bearer |
@@ -317,8 +323,15 @@ timedeal-service/
 | PUT | `/api/admin/items/{id}` | 상품 수정 | Bearer(ADMIN) |
 | DELETE | `/api/admin/items/{id}` | 상품 삭제 | Bearer(ADMIN) |
 | PATCH | `/api/admin/users/{id}/role` | 사용자 역할 변경 | Bearer(ADMIN) |
+| **Actuator** | | | |
+| GET | `/actuator/health` | 헬스 체크 (DB, Redis 상태 포함) | X |
+| GET | `/actuator/info` | 애플리케이션 정보 | X |
+| GET | `/actuator/metrics` | 메트릭 목록 | Bearer |
+| GET | `/actuator/metrics/{name}` | 특정 메트릭 조회 | Bearer |
+| GET | `/actuator/prometheus` | Prometheus 형식 메트릭 | Bearer |
 
-**문서**: Swagger UI → `http://localhost:8080/swagger-ui.html`
+**문서**: Swagger UI → `http://localhost:8080/swagger-ui.html`  
+**모니터링**: Actuator → `http://localhost:8080/actuator`
 
 ---
 
@@ -373,6 +386,15 @@ timedeal-service/
 
 ## 최근 업데이트 내역
 
+### 2026-01-28
+
+- ✅ **Spring Boot Actuator**: 헬스 체크(`/actuator/health`), 메트릭(`/actuator/metrics`), 애플리케이션 정보(`/actuator/info`) 노출
+- ✅ **커스텀 HealthIndicator**: `DatabaseHealthIndicator`, `RedisHealthIndicator` 추가 (DB/Redis 연결 상태 상세 확인)
+- ✅ **보안 설정**: Actuator 엔드포인트 보안 설정 (`/actuator/health`, `/actuator/info`는 공개, 나머지는 인증 필요)
+- ✅ **상품 검색/필터**: `ItemSearchCondition`(name, minPrice, maxPrice, openAfter, openBefore) + Querydsl `ItemRepositoryImpl.findByCondition()` 적용
+- ✅ **GET /api/items**: 선택 쿼리 파라미터로 검색·필터 지원, 조건 없으면 기존과 동일하게 전체 목록 반환
+- ✅ **테스트**: `ItemServiceTest.getItems_WithCondition_CallsFindByCondition`, `getItems_NoCondition_CallsFindAll`, `ItemControllerTest.getItems_WithSearchCondition_Success` 추가
+
 ### 2026-01-27
 
 - ✅ **공통 상수**: `ApiPaths` 도입, Controller 경로 통일
@@ -390,5 +412,5 @@ timedeal-service/
 ---
 
 **작성일**: 2026-01-26  
-**최종 업데이트**: 2026-01-27  
-**버전**: 1.2.0
+**최종 업데이트**: 2026-01-28  
+**버전**: 1.3.0

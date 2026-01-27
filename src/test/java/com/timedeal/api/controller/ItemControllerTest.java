@@ -134,17 +134,31 @@ class ItemControllerTest {
     }
 
     @Test
-    @DisplayName("전체 상품 목록 조회 성공(페이징)")
-    void getAllItems_Success() throws Exception {
+    @DisplayName("상품 목록 조회 성공(페이징, 검색 없음)")
+    void getItems_Success() throws Exception {
         var item = TestFixtures.itemOpened(1L);
         var stock = TestFixtures.stock(item, 100, 1L);
         var page = new PageImpl<>(List.of(new ItemResponse(item, stock)), PageRequest.of(0, 20), 1);
-        when(itemService.getAllItems(any())).thenReturn(page);
+        when(itemService.getItems(any(), any())).thenReturn(page);
 
         mockMvc.perform(get(ApiPaths.ITEMS))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content").isArray())
                 .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.totalElements").value(1));
+    }
+
+    @Test
+    @DisplayName("상품 목록 조회 성공 - 검색 조건(name) 적용")
+    void getItems_WithSearchCondition_Success() throws Exception {
+        var item = TestFixtures.itemOpened(1L);
+        var stock = TestFixtures.stock(item, 100, 1L);
+        var page = new PageImpl<>(List.of(new ItemResponse(item, stock)), PageRequest.of(0, 20), 1);
+        when(itemService.getItems(any(), any())).thenReturn(page);
+
+        mockMvc.perform(get(ApiPaths.ITEMS).param("name", "타임딜"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content").isArray())
                 .andExpect(jsonPath("$.totalElements").value(1));
     }
 }

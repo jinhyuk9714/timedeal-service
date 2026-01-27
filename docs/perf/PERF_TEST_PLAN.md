@@ -1,0 +1,164 @@
+## 타임딜 서비스 성능 테스트 계획서 (Performance Test Plan)
+
+### 1. 목표
+
+- **목적**
+  - 타임딜 주문/재고/인증 기능이 **대규모 트래픽**에서도 안정적으로 동작하는지 검증한다.
+  - 병목 지점을 찾아 **튜닝 전/후 수치를 비교**할 수 있는 자료를 만든다.
+- **주요 성능 지표(SLI)**
+  - **Latency**
+    - p50, p90, p95 응답 시간 (ms)
+  - **Error Rate**
+    - HTTP 5xx 비율
+    - 비즈니스 에러 (재고 부족, 타임딜 미오픈 등) 비율
+  - **Throughput**
+    - 초당 요청 수 (RPS)
+    - 초당 주문 수
+  - **Resource**
+    - 애플리케이션: CPU, 메모리
+    - DB: 커넥션 풀 사용량(Hikari), 슬로 쿼리
+    - Redis: 커넥션/명령 수 (필요 시)
+
+### 2. 목표 수준(SLO) 초안
+
+> 실제 측정 후 조정 가능. 최초 목표값.
+
+- **일반 트래픽 시나리오**
+  - p95 응답 시간: **≤ 300ms**
+  - 에러율(5xx): **< 0.5%**
+  - RPS: **50~100 RPS 수준에서 안정적**
+- **타임딜 오픈 피크 시나리오**
+  - p95 응답 시간: **≤ 500ms**
+  - 에러율(5xx): **< 1%**
+  - 주문 성공 시 재고/주문 데이터는 **정합성 100% (비관적 락으로 보장)**
+
+### 3. 테스트 환경
+
+- **애플리케이션**
+  - Spring Boot 4.0.2, Java 21
+  - 프로파일: `local` (개발용), **`perf` (성능 테스트용, 추후 추가)**  
+- **인프라**
+  - MySQL 8.x, Redis 7.x
+  - 로컬 Docker / `compose.yaml` 사용 (예: `docker compose up -d`)
+  - DB/Redis 설정은 `application-perf.yml`에서 관리 (예정)
+- **관찰도구**
+  - Spring Boot Actuator
+    - `/actuator/health`, `/actuator/metrics`, `/actuator/prometheus`
+  - P6Spy (SQL 로깅)
+  - (선택) Prometheus + Grafana 연동
+
+### 4. 테스트 데이터 & 전제 조건
+
+- **테스트용 유저/아이템/재고**
+  - 유저: 수백~수천 명 (예: 1000명)
+  - 타임딜 아이템: 최소 3개
+    - 각 아이템별 재고: 1000개 이상
+  - 타임딜 오픈 시간(openTime): 성능 테스트 시점 기준으로 이미 오픈된 상태로 설정
+- **전제 조건**
+  - 애플리케이션이 `perf` 프로파일로 기동되어 있음.
+  - DB, Redis가 정상적으로 동작하고 HealthIndicator가 `UP`.
+  - Swagger/OpenAPI로 엔드포인트, 요청/응답 구조 확인 가능.
+
+### 5. 성능 테스트 시나리오
+
+#### 5.1 기본 트래픽 시나리오 (READ 중심)
+
+- **목표**
+  - 일반적인 서비스 사용 패턴에서의 성능(응답 시간, 에러율)을 측정.
+- **대상 API**
+  - `GET /api/items` (목록/검색)
+  - `GET /api/items/{id}` (상세)
+  - `POST /api/auth/login` → `GET /api/users/me` (인증 후 내 정보 조회)
+- **부하 패턴 (예시)**
+  - VUs: 0 → 50 (5분 ramp-up), 50 VUs로 5분 유지
+- **k6 스크립트**
+  - 파일명 예: `perf/k6/basic-read.js`
+
+#### 5.2 타임딜 오픈 피크 시나리오 (주문/락 핵심)
+
+- **목표**
+  - 타임딜 오픈 직후 다수 사용자가 동시에 주문을 넣는 상황에서:
+    - 재고/주문 정합성 보장 여부
+    - 응답 시간, 에러율
+  - 비관적 락이 실제로 어떤 동작/효과를 내는지 수치화.
+- **대상 API**
+  - `POST /api/auth/login`
+  - `POST /api/orders` (타임딜 주문 생성)
+- **부하 패턴 (예시)**
+  - VUs: 0 → 200 (10초 내 급상승, spike)
+  - 200 VUs로 1~2분 유지
+- **중점 관찰**
+  - 성공 주문 수 / 실패(재고 부족, 타임딜 미오픈 등) 비율
+  - DB 락 대기 시간, 커넥션 풀 사용량
+- **k6 스크립트**
+  - 파일명 예: `perf/k6/order-spike.js`
+
+#### 5.3 장시간 Soak 테스트 (안정성)
+
+- **목표**
+  - 낮은/중간 수준의 RPS로 장시간(1~2시간) 운영 시:
+    - 메모리 릭, 커넥션 누수, GC 문제 여부 검증.
+- **대상 API**
+  - 기본 트래픽 + 주문 API 일부 포함.
+- **부하 패턴 (예시)**
+  - VUs: 10~30 수준으로 1~2시간 유지.
+- **k6 스크립트**
+  - 파일명 예: `perf/k6/soak-mixed.js`
+
+#### 5.4 장애/에러 시나리오 (선택)
+
+- **목표**
+  - DB/Redis 장애 혹은 지연 상황에서:
+    - API가 어떤 에러를 반환하는지,
+    - 사용자가 어떤 UX를 경험하는지,
+    - 시스템이 어떻게 복구되는지 확인.
+- **방법 예시**
+  - DB/Redis를 일시적으로 중단하거나 느리게 만들고, 동일한 k6 스크립트를 재실행.
+  - 결과를 별도 섹션으로 문서화.
+
+### 6. k6 구조 및 실행 방법 (초안)
+
+- **디렉토리 구조 제안**
+  - `perf/k6/basic-read.js`
+  - `perf/k6/order-spike.js`
+  - `perf/k6/soak-mixed.js`
+  - `perf/k6/lib/auth.js` (로그인 및 토큰 발급 유틸)
+  - `perf/k6/lib/config.js` (BASE_URL, 기본 옵션 등 공통 설정)
+
+- **공통 실행 방법**
+  - 애플리케이션 기동:
+    - `./gradlew bootRun --args='--spring.profiles.active=perf'`
+  - k6 실행 예시:
+    - `k6 run perf/k6/basic-read.js`
+    - `k6 run perf/k6/order-spike.js`
+
+### 7. 측정/분석 방법
+
+- **k6 결과**
+  - 기본 summary: Latency(p50/p90/p95), RPS, 에러율.
+  - 필요 시 `--out json=./perf/results/<name>.json` 으로 저장 후 그래프화.
+- **애플리케이션/DB 메트릭**
+  - Actuator:
+    - `/actuator/metrics/http.server.requests`
+    - `/actuator/metrics/hikaricp.connections.active`
+  - P6Spy:
+    - 슬로 쿼리 패턴, 락 대기 쿼리 확인.
+
+- **분석 리포트 구조 (추후 PERF_RESULT.md 에 정리 예정)**
+  - 시나리오 설명
+  - 환경 정보 (서버 스펙, 프로파일, DB/Redis 버전)
+  - 튜닝 전 지표 (표/그래프)
+  - 문제/병목 분석
+  - 적용한 개선 사항 (코드/설정)
+  - 튜닝 후 지표 (전/후 비교)
+
+### 8. 향후 개선 아이디어 (포트폴리오용)
+
+- 비관적 락 외에:
+  - 낙관적 락, 분산 락(Redis 기반)과의 비교 정리.
+  - 락 타임아웃, 재시도 전략 설계.
+- 안정성·레질리언스:
+  - Rate limiting, Circuit breaker(Resilience4j 등) 적용 후 성능/안정성 비교.
+- 관찰성:
+  - Prometheus + Grafana 대시보드 스크린샷을 포트폴리오에 포함.
+

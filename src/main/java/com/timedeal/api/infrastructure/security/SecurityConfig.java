@@ -59,12 +59,20 @@ public class SecurityConfig {
                 
                 // HTTP 요청에 대한 인증/인가 규칙 설정
                 .authorizeHttpRequests(auth -> auth
+                        // Actuator 엔드포인트
+                        .requestMatchers("/actuator/health").permitAll() // 헬스 체크는 공개 (로드밸런서 등에서 사용)
+                        .requestMatchers("/actuator/info").permitAll() // 정보는 공개
+                        // PERF 프로파일에서는 메트릭 확인을 위해 /actuator/metrics 를 열어둔다.
+                        .requestMatchers("/actuator/metrics/**").permitAll()
+                        .requestMatchers("/actuator/**").authenticated() // 나머지 Actuator 엔드포인트는 인증 필요
+                        
                         // Swagger UI 경로 (인증 불필요)
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll()
                         
                         // 공개 엔드포인트 (인증 불필요)
                         .requestMatchers("/api/auth/**").permitAll() // 로그인, 회원가입
                         .requestMatchers("/api/users", "/api/users/**").permitAll() // 회원가입은 공개 (선택사항)
+                        .requestMatchers("/api/items", "/api/items/**").permitAll() // ✅ 상품 조회는 공개
                         
                         // 관리자 전용 엔드포인트
                         .requestMatchers("/api/admin/**").hasRole("ADMIN") // 관리자만 접근 가능

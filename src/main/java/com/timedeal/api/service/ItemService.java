@@ -4,6 +4,7 @@ import com.timedeal.api.domain.item.Item;
 import com.timedeal.api.domain.stock.Stock;
 import com.timedeal.api.dto.item.ItemRequest;
 import com.timedeal.api.dto.item.ItemResponse;
+import com.timedeal.api.dto.item.ItemSearchCondition;
 import com.timedeal.api.exception.BusinessException;
 import com.timedeal.api.exception.ErrorCode;
 import com.timedeal.api.infrastructure.persistence.item.ItemRepository;
@@ -66,20 +67,32 @@ public class ItemService {
     
     /**
      * 전체 상품 목록 조회 (페이징)
-     * 
-     * @param pageable: 페이징 정보 (page, size, sort)
+     * 검색 조건이 없으면 전체 조회, 있으면 Querydsl로 필터링
+     *
+     * @param condition 검색 조건 (상품명, 가격 범위, 오픈 시간 범위). null이거나 조건 없음 시 전체 조회
+     * @param pageable  페이징 정보 (page, size, sort)
      * @return Page<ItemResponse> (상품 목록 + 각 상품의 재고 수량 + 페이징 정보)
      */
-    public Page<ItemResponse> getAllItems(Pageable pageable) {
-        Page<Item> itemPage = itemRepository.findAll(pageable);
-        
-        // Page의 content를 ItemResponse로 변환
-        // 재고 정보를 포함하여 ItemResponse 생성
+    public Page<ItemResponse> getItems(ItemSearchCondition condition, Pageable pageable) {
+        Page<Item> itemPage = (condition != null && condition.hasAnyCondition())
+                ? itemRepository.findByCondition(condition, pageable)
+                : itemRepository.findAll(pageable);
+
         return itemPage.map(item -> {
             Stock stock = stockRepository.findByItemId(item.getId())
                     .orElse(null);
             return new ItemResponse(item, stock);
         });
+    }
+
+    /**
+     * 전체 상품 목록 조회 (페이징, 검색 없음)
+     *
+     * @param pageable 페이징 정보 (page, size, sort)
+     * @return Page<ItemResponse>
+     */
+    public Page<ItemResponse> getAllItems(Pageable pageable) {
+        return getItems(null, pageable);
     }
     
     public Item findById(Long id) {

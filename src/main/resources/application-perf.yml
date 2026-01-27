@@ -1,47 +1,50 @@
 server:
   port: 8080
 
-# JWT 설정
 jwt:
+  # 실제 성능 테스트에서는 환경변수/외부 설정으로 교체하는 것이 이상적이지만,
+  # 여기서는 local과 동일하게 둡니다.
   secret: your-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm-please-change-this-in-production
-  expiration: 86400000 # 24시간 (밀리초)
+  expiration: 86400000
 
-# 애플리케이션 정보 (Actuator info 엔드포인트에 표시)
 info:
   app:
-    name: 타임딜 서비스
-    description: 특정 시간에 오픈되는 상품에 대한 주문을 처리하는 REST API 서비스
+    name: 타임딜 서비스 (PERF)
+    description: 성능 테스트용 프로파일
     version: 0.0.1-SNAPSHOT
 
 spring:
-  profiles:
-    active: local
-
-  # 페이징 기본 설정
   data:
     web:
       pageable:
-        default-page-size: 20  # 기본 페이지 크기
-        max-page-size: 100      # 최대 페이지 크기
-        page-parameter: page    # 페이지 번호 파라미터명
-        size-parameter: size    # 페이지 크기 파라미터명
-        sort: id,desc           # 기본 정렬 (ID 내림차순)
+        default-page-size: 20
+        max-page-size: 100
+        page-parameter: page
+        size-parameter: size
+        sort: id,desc
 
   datasource:
     driver-class-name: com.p6spy.engine.spy.P6SpyDriver
     url: jdbc:p6spy:mysql://localhost:3306/timedeal?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
     username: timedeal
     password: timedeal
+    hikari:
+      maximum-pool-size: 30
+      minimum-idle: 10
+      idle-timeout: 300000
+      max-lifetime: 1800000
+      connection-timeout: 30000
 
   jpa:
     hibernate:
-      ddl-auto: update
+      # 스키마는 미리 맞춰두었다고 가정하고 validate 사용
+      ddl-auto: validate
     properties:
       hibernate:
-        format_sql: true
-        show_sql: true
+        format_sql: false
+        show_sql: false
         dialect: org.hibernate.dialect.MySQLDialect
-        use_sql_comments: true
+        use_sql_comments: false
     open-in-view: false
 
   redis:
@@ -50,11 +53,12 @@ spring:
 
 logging:
   level:
-    org.hibernate.SQL: DEBUG
-    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+    root: INFO
+    org.springframework.web: INFO
+    org.hibernate.SQL: INFO
+    org.hibernate.type.descriptor.sql.BasicBinder: WARN
     p6spy: INFO
 
-# Swagger/OpenAPI 설정
 springdoc:
   api-docs:
     path: /v3/api-docs
@@ -63,22 +67,17 @@ springdoc:
     tags-sorter: alpha
     operations-sorter: alpha
 
-# Actuator 설정
 management:
   endpoints:
     web:
       exposure:
-        # 노출할 엔드포인트 설정
         include: health,info,metrics,prometheus
       base-path: /actuator
   endpoint:
     health:
-      # 헬스 체크 상세 정보 표시 (always: 항상, when-authorized: 인증 시, never: 안 보임)
       show-details: when-authorized
-      # 헬스 체크에 포함할 항목
       show-components: always
   info:
-    # info 엔드포인트에 표시할 정보
     env:
       enabled: true
     java:
@@ -86,7 +85,7 @@ management:
     os:
       enabled: true
   metrics:
-    # 메트릭 수집 설정
     export:
       prometheus:
         enabled: true
+

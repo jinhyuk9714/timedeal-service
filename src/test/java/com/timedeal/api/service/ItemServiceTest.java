@@ -4,6 +4,7 @@ import com.timedeal.api.domain.item.Item;
 import com.timedeal.api.domain.stock.Stock;
 import com.timedeal.api.dto.item.ItemRequest;
 import com.timedeal.api.dto.item.ItemResponse;
+import com.timedeal.api.dto.item.ItemSearchCondition;
 import com.timedeal.api.exception.BusinessException;
 import com.timedeal.api.exception.ErrorCode;
 import com.timedeal.api.infrastructure.persistence.item.ItemRepository;
@@ -113,7 +114,7 @@ class ItemServiceTest {
     }
 
     @Test
-    @DisplayName("전체 상품 목록 조회 성공(페이징)")
+    @DisplayName("전체 상품 목록 조회 성공(페이징, 검색 없음)")
     void getAllItems_Success() {
         Pageable pageable = PageRequest.of(0, 20);
         when(itemRepository.findAll(pageable))
@@ -125,6 +126,42 @@ class ItemServiceTest {
         assertThat(result.getContent()).hasSize(1);
         assertThat(result.getTotalElements()).isEqualTo(1);
         assertThat(result.getContent().get(0).getStockQuantity()).isEqualTo(100);
+        verify(itemRepository).findAll(pageable);
+        verify(itemRepository, never()).findByCondition(any(), any());
+    }
+
+    @Test
+    @DisplayName("상품 목록 조회 - 검색 조건 있으면 findByCondition 호출")
+    void getItems_WithCondition_CallsFindByCondition() {
+        Pageable pageable = PageRequest.of(0, 20);
+        ItemSearchCondition condition = new ItemSearchCondition();
+        condition.setName("타임딜");
+        when(itemRepository.findByCondition(condition, pageable))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(item), pageable, 1));
+        when(stockRepository.findByItemId(1L)).thenReturn(Optional.of(stock));
+
+        var result = itemService.getItems(condition, pageable);
+
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getTotalElements()).isEqualTo(1);
+        verify(itemRepository).findByCondition(condition, pageable);
+        verify(itemRepository, never()).findAll(any(Pageable.class));
+    }
+
+    @Test
+    @DisplayName("상품 목록 조회 - 검색 조건 없으면 findAll 호출")
+    void getItems_NoCondition_CallsFindAll() {
+        Pageable pageable = PageRequest.of(0, 20);
+        ItemSearchCondition condition = new ItemSearchCondition(); // 모두 null/blank
+        when(itemRepository.findAll(pageable))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(item), pageable, 1));
+        when(stockRepository.findByItemId(1L)).thenReturn(Optional.of(stock));
+
+        var result = itemService.getItems(condition, pageable);
+
+        assertThat(result.getContent()).hasSize(1);
+        verify(itemRepository).findAll(pageable);
+        verify(itemRepository, never()).findByCondition(any(), any());
     }
 
     @Test

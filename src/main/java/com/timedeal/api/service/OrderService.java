@@ -11,6 +11,8 @@ import com.timedeal.api.exception.BusinessException;
 import com.timedeal.api.exception.ErrorCode;
 import com.timedeal.api.infrastructure.persistence.order.OrderRepository;
 import com.timedeal.api.infrastructure.persistence.stock.StockRepository;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -48,6 +50,7 @@ public class OrderService {
     private final ItemService itemService;
     private final UserService userService;
     private final StockRepository stockRepository;
+    private final MeterRegistry meterRegistry;
     
     /**
      * 주문 생성 메서드
@@ -68,50 +71,69 @@ public class OrderService {
      */
     @Transactional
     public OrderResponse createOrder(Long userId, OrderRequest request) {
-        // 1. 사용자 조회
-        // - 존재하지 않는 사용자면 예외 발생
-        User user = userService.findById(userId);
-        
-        // 2. 상품 조회
-        // - 존재하지 않는 상품이면 예외 발생
-        Item item = itemService.findById(request.getItemId());
-        
-        // 3. 타임딜 오픈 시간 체크
-        // - 비즈니스 규칙: 타임딜 오픈 시간이 지나야 주문 가능
-        LocalDateTime now = LocalDateTime.now();
-        if (now.isBefore(item.getOpenTime())) {
-            throw new BusinessException(ErrorCode.TIMEDEAL_NOT_OPENED);
+        Timer.Sample sample = Timer.start(meterRegistry);
+        try {
+            // 1. 사용자 조회
+            // - 존재하지 않는 사용자면 예외 발생
+            User user = userService.findById(userId);
+
+            // 2. 상품 조회
+            // - 존재하지 않는 상품이면 예외 발생
+            Item item = itemService.findById(request.getItemId());
+
+            // 3. 타임딜 오픈 시간 체크
+            // - 비즈니스 규칙: 타임딜 오픈 시간이 지나야 주문 가능
+            LocalDateTime now = LocalDateTime.now();
+            if (now.isBefore(item.getOpenTime())) {
+                throw new BusinessException(ErrorCode.TIMEDEAL_NOT_OPENED);
+            }
+
+            // 4. 재고 확인 및 차감 (비관적 락 사용)
+            // - findByItemIdWithLock: SELECT FOR UPDATE로 락을 걸고 조회
+            // - 동시에 여러 주문이 들어와도 재고가 정확하게 관리됨
+            Stock stock = stockRepository.findByItemIdWithLock(request.getItemId())
+                    .orElseThrow(() -> new BusinessException(ErrorCode.STOCK_NOT_FOUND));
+
+            // 5. 재고 부족 체크
+            if (stock.getQuantity() < request.getQuantity()) {
+                throw new BusinessException(ErrorCode.INSUFFICIENT_STOCK);
+            }
+
+            // 6. 재고 차감
+            // - 도메인 객체의 메서드를 통해 비즈니스 로직 실행
+            // - 재고가 부족하면 도메인 객체에서 예외 발생
+            stock.decrease(request.getQuantity());
+            stockRepository.save(stock); // 변경사항 저장
+
+            // 7. 주문 생성
+            // - Builder 패턴으로 객체 생성 (가독성 향상)
+            Order order = Order.builder()
+                    .user(user)
+                    .item(item)
+                    .status(OrderStatus.ORDERED)
+                    .quantity(request.getQuantity())
+                    .build();
+
+            // 8. 주문 저장 및 응답 반환
+            Order savedOrder = orderRepository.save(order);
+
+            sample.stop(Timer.builder("timedeal.order.create")
+                    .tag("result", "success")
+                    .register(meterRegistry));
+
+            return new OrderResponse(savedOrder);
+        } catch (BusinessException e) {
+            sample.stop(Timer.builder("timedeal.order.create")
+                    .tag("result", "business_error")
+                    .tag("errorCode", e.getErrorCode().name())
+                    .register(meterRegistry));
+            throw e;
+        } catch (RuntimeException e) {
+            sample.stop(Timer.builder("timedeal.order.create")
+                    .tag("result", "failure")
+                    .register(meterRegistry));
+            throw e;
         }
-        
-        // 4. 재고 확인 및 차감 (비관적 락 사용)
-        // - findByItemIdWithLock: SELECT FOR UPDATE로 락을 걸고 조회
-        // - 동시에 여러 주문이 들어와도 재고가 정확하게 관리됨
-        Stock stock = stockRepository.findByItemIdWithLock(request.getItemId())
-                .orElseThrow(() -> new BusinessException(ErrorCode.STOCK_NOT_FOUND));
-        
-        // 5. 재고 부족 체크
-        if (stock.getQuantity() < request.getQuantity()) {
-            throw new BusinessException(ErrorCode.INSUFFICIENT_STOCK);
-        }
-        
-        // 6. 재고 차감
-        // - 도메인 객체의 메서드를 통해 비즈니스 로직 실행
-        // - 재고가 부족하면 도메인 객체에서 예외 발생
-        stock.decrease(request.getQuantity());
-        stockRepository.save(stock); // 변경사항 저장
-        
-        // 7. 주문 생성
-        // - Builder 패턴으로 객체 생성 (가독성 향상)
-        Order order = Order.builder()
-                .user(user)
-                .item(item)
-                .status(OrderStatus.ORDERED)
-                .quantity(request.getQuantity())
-                .build();
-        
-        // 8. 주문 저장 및 응답 반환
-        Order savedOrder = orderRepository.save(order);
-        return new OrderResponse(savedOrder);
     }
     
     public OrderResponse getOrder(Long id) {

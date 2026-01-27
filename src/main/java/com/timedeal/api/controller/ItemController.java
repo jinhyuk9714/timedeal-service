@@ -3,6 +3,7 @@ package com.timedeal.api.controller;
 import com.timedeal.api.common.ApiPaths;
 import com.timedeal.api.dto.item.ItemRequest;
 import com.timedeal.api.dto.item.ItemResponse;
+import com.timedeal.api.dto.item.ItemSearchCondition;
 import com.timedeal.api.service.ItemService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -127,25 +128,17 @@ public class ItemController {
     }
     
     /**
-     * 전체 상품 목록 조회 API (페이징)
-     * 
-     * @GetMapping:
-     * - HTTP GET 요청 처리
-     * - URL: GET /api/items?page=0&size=10&sort=id,desc
-     * - page: 페이지 번호 (0부터 시작)
-     * - size: 페이지 크기 (기본값: 20)
-     * - sort: 정렬 기준 (예: id,desc 또는 createdAt,asc)
-     * 
-     * @PageableDefault:
-     * - 페이징 기본값 설정
-     * - size=20: 기본 페이지 크기
-     * - sort="id,desc": 기본 정렬 (ID 내림차순)
+     * 상품 목록 조회 API (페이징 + 검색/필터)
+     *
+     * 검색 파라미터(모두 선택): name(상품명 포함), minPrice, maxPrice, openAfter, openBefore
+     * 페이징: page, size, sort (예: sort=openTime,asc)
      */
     @Operation(
-            summary = "전체 상품 목록 조회",
-            description = "등록된 모든 타임딜 상품 목록을 페이징하여 조회합니다. 각 상품의 재고 수량도 함께 반환됩니다. " +
-                    "쿼리 파라미터: page (페이지 번호, 0부터 시작), size (페이지 크기, 기본값: 20), " +
-                    "sort (정렬 기준, 예: id,desc 또는 createdAt,asc)"
+            summary = "상품 목록 조회 (검색/필터 지원)",
+            description = "타임딜 상품 목록을 페이징하여 조회합니다. 검색 조건을 주면 조건에 맞는 상품만 반환합니다. " +
+                    "검색 파라미터(선택): name(상품명 부분 일치), minPrice(최소 가격), maxPrice(최대 가격), " +
+                    "openAfter(오픈 시간 이상), openBefore(오픈 시간 이하). " +
+                    "페이징: page, size, sort(예: id,desc 또는 openTime,asc)"
     )
     @ApiResponse(
             responseCode = "200",
@@ -153,11 +146,12 @@ public class ItemController {
             content = @Content(schema = @Schema(implementation = ItemResponse.class))
     )
     @GetMapping
-    public ResponseEntity<Page<ItemResponse>> getAllItems(
+    public ResponseEntity<Page<ItemResponse>> getItems(
+            @ParameterObject ItemSearchCondition condition,
             @ParameterObject
             @PageableDefault(size = 20, sort = "id", direction = org.springframework.data.domain.Sort.Direction.DESC)
             Pageable pageable) {
-        Page<ItemResponse> responses = itemService.getAllItems(pageable);
+        Page<ItemResponse> responses = itemService.getItems(condition, pageable);
         return ResponseEntity.ok(responses);
     }
 }
