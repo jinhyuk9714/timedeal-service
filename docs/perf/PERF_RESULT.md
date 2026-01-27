@@ -17,6 +17,8 @@
   - `OrderService.createOrder()` Micrometer Timer 기준:  
     - 평균 **≈ 3~4ms**, 최대 **≈ 112ms**, 호출 수 **6590회**.  
     - → **주요 병목은 비즈니스 로직보다 DB I/O, 네트워크, 필터 체인 등 외부 요소에 더 가까움**.
+- **Soak 시나리오 (장시간 부하)**
+  - **10 VU · 10분** 동안 로그인 + 목록/상세 + 30% 확률 주문 혼합: **에러율 0%**, **p95 ≈ 118ms**, 약 **29 RPS**로 안정 동작.
 
 ---
 
@@ -266,7 +268,58 @@ curl -i "http://localhost:8080/actuator/metrics/timedeal.order.create?tag=result
 
 ---
 
-### 4. 현재까지의 결론 및 다음 단계 제안
+### 4. 시나리오 C – Soak (장시간 부하)
+
+**스크립트**: `perf/k6/soak-mixed.js`  
+**대상 API**:
+- `POST /api/auth/login`
+- `GET /api/items`
+- `GET /api/items/{id}` (목록의 첫 번째 아이템 기준)
+- `POST /api/orders` (약 30% 확률로 호출)
+
+**부하 패턴**:
+- 10 VU 고정, 10분 유지
+- 각 iteration: 로그인 → 목록 조회 → 상세 조회 → (30% 확률) 주문 생성
+
+**실행 명령**:
+```bash
+k6 run perf/k6/soak-mixed.js
+```
+
+환경 변수로 조정 가능: `SOAK_VUS`, `SOAK_DURATION` 등.
+
+#### 4-1. 결과 요약 (10 VU, 10분)
+
+- **Threshold**
+  - `http_req_failed rate < 0.01`: **통과** (실측 0.00%)
+- **Checks**
+  - `checks_total`: **22932** (약 38.2/s)
+  - `checks_succeeded`: **100%** (22932/22932)
+  - `checks_failed`: **0%**
+  - 체크별: `login status is 200`, `login has token`, `list status is 200`, `detail status is 200`, `order status is 201 or 400/404` 모두 통과
+- **HTTP**
+  - `http_reqs`: **17590** (약 **29.3 RPS**)
+  - `http_req_failed`: **0%** (0/17590)
+  - `http_req_duration`:
+    - 평균: **≈ 37.48ms**
+    - median: **≈ 7.28ms**
+    - p90: **≈ 113.55ms**
+    - p95: **≈ 118.37ms**
+    - max: **≈ 327.52ms**
+- **실행**
+  - `iterations`: **5342** (약 8.9/s)
+  - `iteration_duration`: 평균 ≈ 1.12s, p95 ≈ 1.14s
+  - `vus`: 10 (고정)
+
+**해석**
+
+- 10분 동안 **에러 없이** 로그인·목록·상세·주문 혼합 트래픽이 약 29 RPS로 유지됨.
+- **p95 ≈ 118ms**로, 기본 READ 시나리오(20 VU 기준 p95 ≈ 39ms)보다는 다소 높지만, 장시간 부하에서 **SLO(p95 ≤ 300ms, 에러율 < 0.5%)를 여유 있게 만족**.
+- Soak 관점에서 **메모리 누수·연결 풀 고갈·점진적 성능 저하 없이** 10분 구간이 안정적으로 유지되었음을 확인.
+
+---
+
+### 5. 현재까지의 결론 및 다음 단계 제안
 
 1. **기본 READ 시나리오**
    - 1 VU/10초, 20 VU/60초 모두 에러율 0%, p95 < 50ms로 매우 양호.
@@ -280,8 +333,10 @@ curl -i "http://localhost:8080/actuator/metrics/timedeal.order.create?tag=result
      - `createOrder()` 내부 처리 시간(평균 ≈ 3~4ms, 최대 ≈ 112ms)을 수치화하여,  
        **도메인 로직은 매우 빠르게 동작하고 있고, 전체 레이턴시는 주로 외부/주변 요소에서 발생**한다는 근거를 확보함.
 
-3. **향후 리포트 확장 방향**
-   - Soak 테스트(장시간 낮은 RPS 유지) 결과 추가.
+3. **Soak 시나리오**
+   - 10 VU · 10분 soak-mixed 실행에서 에러율 0%, p95 ≈ 118ms, 약 29 RPS로 장시간 부하 시에도 안정 동작을 확인함.
+
+4. **향후 리포트 확장 방향**
    - 튜닝 전/후(예: 인덱스 추가, Hikari 풀 조정, 캐시 도입 등) 수치를 표/그래프로 비교.
    - 비관적 락 전략과 낙관적 락/분산 락과의 비교 실험을 진행한 후, 결과를 이 문서에 추가.
 
