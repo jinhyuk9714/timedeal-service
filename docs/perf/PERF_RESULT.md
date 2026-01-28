@@ -213,12 +213,13 @@ PERF_TEST_PLAN **5.4**에 정의된 대로, DB/Redis 일시 중단·지연 시 A
 
 | 상황 | 사용한 k6 스크립트 | 관찰 항목 | 결과 (측정 시 기입) |
 |------|-------------------|----------|---------------------|
-| 정상 Baseline | basic-read 또는 order-spike | RPS, p95, http_req_failed | — |
-| DB 일시 중단 | 동일 스크립트 | 응답 코드(5xx/연결 실패 등), http_req_failed | — |
-| DB 복구 후 | 동일 스크립트 | 재성공 여부, RPS·에러율 수렴 | — |
-| Redis 일시 중단 | 로그인·주문 포함 스크립트 | 에러 유형, 로그인/로그아웃·블랙리스트 영향 | — |
-| Redis 복구 후 | 동일 스크립트 | 재성공 여부 | — |
+| 정상 Baseline | order-spike | RPS, p95, http_req_failed | RPS≈166, p95≈887ms, http_req_failed 0%, orders_success_201 6694 |
+| DB 일시 중단 | 동일 스크립트 | 응답 코드(5xx/연결 실패 등), http_req_failed | **http_req_failed 100%** (1160/1160), checks 100% 실패. avg≈15s·p95≈30s(타임아웃). iterations 570+10 interrupted, orders_4xx_other 580 |
+| DB 복구 후 | 동일 스크립트 | 재성공 여부, RPS·에러율 수렴 | **정상 수렴**. RPS≈167, p95≈865ms, http_req_failed 0%, orders_success_201 6747 |
+| Redis 일시 중단 | order-spike (로그인+주문) | 에러 유형, 로그인/로그아웃·블랙리스트 영향 | **실패 없음**. RPS≈168, p95≈914ms, http_req_failed 0%, orders_success_201 6817. 이 스크립트는 로그아웃을 호출하지 않아 Redis(블랙리스트) 경로를 타지 않음. |
+| Redis 복구 후 | 동일 스크립트 | 재성공 여부 | **정상**. RPS≈168, p95≈860ms, http_req_failed 0%, orders_success_201 6755 |
 
+- **Redis 해석**: 이 서비스에서 Redis는 **로그아웃 시 토큰 블랙리스트** 저장용으로만 사용된다. order-spike는 로그인·주문만 반복하므로 Redis를 사용하지 않아, Redis 중단 시에도 요청이 실패하지 않았다. 로그아웃·블랙리스트 검사가 들어가는 시나리오(예: 로그아웃 후 동일 토큰으로 API 호출)라면 Redis 중단 시 영향이 나타날 수 있음.
 - **(선택) 지연 부여**: `tc` 등으로 DB/Redis 경로 지연 추가 후, 동일 스크립트로 레이턴시·에러율 변화를 측정해 위 표에 행을 추가해 기록하면 됨.
 
 ---
