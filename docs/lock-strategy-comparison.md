@@ -52,11 +52,11 @@
 
   → **동일 상품에 주문이 몰리는 스파이크**에서는, 이 프로젝트 부하 조건에서는 **비관적 락이 처리량·성공률·에러율 모두 유리**했다. 낙관적 락은 version 충돌과 재시도/실패가 많아져 부적합한 편이었다.
 
-  상세 실험 방법·결과표·실패 원인 해석은 [PERF_RESULT 8절](perf/PERF_RESULT.md#8-락-전략-비교-실험-b-3) 참고.
+  상세 실험 방법·결과표·해석은 [PERF_RESULT 실험 4(락 전략)](perf/PERF_RESULT.md#실험-4-락-전략-비관적-vs-낙관적-order-spike만) 참고.
 
 ---
 
 ## 더 읽을 거리
 
 - **[PESSIMISTIC_LOCK_GUIDE.md](guides/PESSIMISTIC_LOCK_GUIDE.md)** — 비관적 락 개념·구현·동작 원리·SQL·주의사항.
-- **[PERF_RESULT](perf/PERF_RESULT.md)** 8절 — 락 전략 비교 실험(B-3) 측정 방법·결과표·해석.
+- **[PERF_RESULT](perf/PERF_RESULT.md)** — 성능 테스트 결과 (공통 조건·Baseline·실험별 비교). 락 전략은 실험 4.
