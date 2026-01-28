@@ -62,6 +62,12 @@ public class OrderService {
     @Value("${order.lock-strategy:pessimistic}")
     private String lockStrategy;
 
+    @Value("${order.distributed-lock.max-retries:3}")
+    private int distributedLockMaxRetries;
+
+    @Value("${order.distributed-lock.retry-sleep-ms:10}")
+    private long distributedLockRetrySleepMs;
+
     /**
      * 주문 생성 메서드
      * 
@@ -167,18 +173,18 @@ public class OrderService {
     }
 
     /**
-     * Redis 분산 락으로 재고 차감. 락 획득 실패 시 최대 3회 재시도.
+     * Redis 분산 락으로 재고 차감. 락 획득 실패 시 order.distributed-lock.max-retries 회 재시도,
+     * 재시도 간격 order.distributed-lock.retry-sleep-ms(ms).
      */
     private Stock acquireWithDistributedLock(Long itemId, int quantity) {
-        int maxRetries = 3;
-        for (int attempt = 0; attempt < maxRetries; attempt++) {
+        for (int attempt = 0; attempt < distributedLockMaxRetries; attempt++) {
             Optional<StockLockHandle> handleOpt = stockLockService.tryLock(itemId);
             if (handleOpt.isEmpty()) {
-                if (attempt == maxRetries - 1) {
+                if (attempt == distributedLockMaxRetries - 1) {
                     throw new BusinessException(ErrorCode.INSUFFICIENT_STOCK);
                 }
                 try {
-                    Thread.sleep(10);
+                    Thread.sleep(distributedLockRetrySleepMs);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     throw new BusinessException(ErrorCode.INSUFFICIENT_STOCK);

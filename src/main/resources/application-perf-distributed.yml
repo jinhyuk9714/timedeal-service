@@ -2,3 +2,7 @@
 # 기동: ./gradlew bootRun --args='--spring.profiles.active=perf,perf-distributed'
 order:
   lock-strategy: distributed
+  distributed-lock:
+    ttl-seconds: 5 # 락 유효 시간. 재고 갱신이 이 시간 안에 끝나야 함
+    max-retries: 3 # 락 획득 실패 시 재시도 횟수
+    retry-sleep-ms: 10 # 재시도 전 대기 시간(ms)

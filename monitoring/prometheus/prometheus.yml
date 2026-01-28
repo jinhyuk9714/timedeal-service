@@ -1,0 +1,15 @@
+# Prometheus 설정 — 타임딜 서비스 메트릭 수집
+# 앱은 호스트에서 실행(./gradlew bootRun)되므로 host.docker.internal로 스크래핑
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Spring Boot Actuator Prometheus 엔드포인트
+  - job_name: "timedeal-app"
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["host.docker.internal:8080"]
+    # Linux에서 host.docker.internal 미지원 시: docker run 시 --add-host=host.docker.internal:host-gateway 필요
+    # 또는 compose에서 prometheus 서비스에 extra_hosts: - "host.docker.internal:host-gateway" 추가

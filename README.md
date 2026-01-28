@@ -43,12 +43,14 @@
    docker compose up -d
    ```
 2. **애플리케이션 실행**
+
    ```bash
    ./gradlew bootRun
    ```
 
    - Swagger UI: http://localhost:8080/swagger-ui.html
    - Actuator 헬스: http://localhost:8080/actuator/health
+   - **Prometheus + Grafana**: `docker compose up -d` 시 Prometheus(9090)·Grafana(3000)도 기동. 대시보드·접속 방법은 [배포·모니터링 가이드](docs/deployment-monitoring.md) 6절 참고.
 
 ---
 
@@ -117,6 +119,7 @@ k6와 `perf` 프로파일로 부하·스파이크·Soak 시나리오를 수행�
 - [docs/README.md](./docs/README.md) — 문서 목차 (가이드·성능·운영 문서 한눈에)
 - [docs/PROJECT_STRUCTURE.md](./docs/PROJECT_STRUCTURE.md) — 프로젝트 구조, 레이어, API, 테스트 가이드
 - [docs/deployment-monitoring.md](./docs/deployment-monitoring.md) — 배포·모니터링 가이드 (실행 방법, 헬스·메트릭·로그)
+- [docs/INTERVIEW-GUIDE.md](./docs/INTERVIEW-GUIDE.md) — 인터뷰/발표용 요약 및 예상 질문·답변 정리
 - [docs/perf/PERF_TEST_PLAN.md](./docs/perf/PERF_TEST_PLAN.md) — 성능 테스트 계획·SLO·시나리오
 - [docs/perf/PERF_RESULT.md](./docs/perf/PERF_RESULT.md) — 성능 테스트 실측 결과 리포트
 - [docs/lock-strategy-comparison.md](./docs/lock-strategy-comparison.md) — 비관적 vs 낙관적 vs 분산 락 비교 (한 페이지 요약)

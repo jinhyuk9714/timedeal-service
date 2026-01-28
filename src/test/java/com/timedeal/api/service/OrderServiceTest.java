@@ -114,7 +114,7 @@ class OrderServiceTest {
         
         // 재고가 차감되었는지 확인
         verify(stockRepository, times(1)).findByItemIdWithLock(1L);
-        verify(stockRepository, times(1)).save(any(Stock.class));
+        verify(stockRepository, times(1)).saveAndFlush(any(Stock.class));
         verify(orderRepository, times(1)).save(any(Order.class));
     }
 

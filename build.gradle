@@ -34,6 +34,8 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    // Prometheus 메트릭 노출용 Micrometer 레지스트리
+    implementation 'io.micrometer:micrometer-registry-prometheus'
     implementation 'org.springframework.boot:spring-boot-starter-cache'
     
     // Caffeine (B-2 상품 목록/상세 캐시). CaffeineCacheManager 사용을 위해 context-support 포함

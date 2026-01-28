@@ -64,6 +64,8 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/info").permitAll() // 정보는 공개
                         // PERF 프로파일에서는 메트릭 확인을 위해 /actuator/metrics 를 열어둔다.
                         .requestMatchers("/actuator/metrics/**").permitAll()
+                        // Prometheus 스크래핑용 (로컬/모니터링; 운영에서는 IP 제한 등 추가 권장)
+                        .requestMatchers("/actuator/prometheus").permitAll()
                         .requestMatchers("/actuator/**").authenticated() // 나머지 Actuator 엔드포인트는 인증 필요
                         
                         // Swagger UI 경로 (인증 불필요)

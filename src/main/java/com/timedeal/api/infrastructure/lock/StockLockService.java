@@ -1,5 +1,6 @@
 package com.timedeal.api.infrastructure.lock;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -10,17 +11,20 @@ import java.util.concurrent.TimeUnit;
 /**
  * 재고 차감 시 상품별 Redis 분산 락을 제공.
  * order.lock-strategy=distributed 일 때 사용.
+ * TTL·재시도는 order.distributed-lock.* (application-perf-distributed.yml)로 조정 가능.
  */
 @Service
 public class StockLockService {
 
     private static final String KEY_PREFIX = "stock:lock:";
-    private static final long TTL_SECONDS = 5;
 
     private final RedisTemplate<String, String> redisTemplate;
+    private final long ttlSeconds;
 
-    public StockLockService(RedisTemplate<String, String> redisTemplate) {
+    public StockLockService(RedisTemplate<String, String> redisTemplate,
+                            @Value("${order.distributed-lock.ttl-seconds:5}") long ttlSeconds) {
         this.redisTemplate = redisTemplate;
+        this.ttlSeconds = ttlSeconds;
     }
 
     /**
@@ -32,7 +36,7 @@ public class StockLockService {
     public Optional<StockLockHandle> tryLock(Long itemId) {
         String key = KEY_PREFIX + itemId;
         String value = UUID.randomUUID().toString();
-        Boolean ok = redisTemplate.opsForValue().setIfAbsent(key, value, TTL_SECONDS, TimeUnit.SECONDS);
+        Boolean ok = redisTemplate.opsForValue().setIfAbsent(key, value, ttlSeconds, TimeUnit.SECONDS);
         if (Boolean.TRUE.equals(ok)) {
             return Optional.of(new StockLockHandle(key, value, redisTemplate));
         }

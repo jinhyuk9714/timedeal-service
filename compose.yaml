@@ -17,7 +17,8 @@ services:
       - --collation-server=utf8mb4_unicode_ci
       - --default-authentication-plugin=mysql_native_password
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
+      test:
+        ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -36,6 +37,37 @@ services:
       timeout: 3s
       retries: 10
 
+  # 모니터링: 앱(호스트) 메트릭 수집. 앱은 ./gradlew bootRun으로 띄운 뒤 사용.
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: timedeal-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # Linux에서도 호스트 앱 스크래핑 가능
+
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: timedeal-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_HTTP_PORT: 3000
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+
 volumes:
   mysql_data:
   redis_data:
+  grafana_data:

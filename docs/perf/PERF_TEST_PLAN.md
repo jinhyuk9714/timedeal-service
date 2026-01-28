@@ -43,7 +43,7 @@
 
 - **애플리케이션**
   - Spring Boot 4.0.2, Java 21
-  - 프로파일: `local` (개발용), **`perf` (성능 테스트용, 추후 추가)**  
+  - 프로파일: `local` (개발용), **`perf` (성능 테스트용, 추후 추가)**
 - **인프라**
   - MySQL 8.x, Redis 7.x
   - 로컬 Docker / `compose.yaml` 사용 (예: `docker compose up -d`)
@@ -184,11 +184,10 @@
 
 ### 8. 향후 개선 아이디어 (포트폴리오용)
 
-- 비관적 락 외에:
-  - 낙관적 락, 분산 락(Redis 기반)과의 비교 정리.
-  - 락 타임아웃, 재시도 전략 설계.
-- 안정성·레질리언스:
-  - Rate limiting, Circuit breaker(Resilience4j 등) 적용 후 성능/안정성 비교.
-- 관찰성:
-  - Prometheus + Grafana 대시보드 스크린샷을 포트폴리오에 포함.
-
+- **락 전략·타임아웃·재시도** (정리 완료)
+  - 낙관적 락, 분산 락(Redis)과의 비교·실측은 [PERF_RESULT 실험 4](PERF_RESULT.md#실험-4-락-전략-비관적-vs-낙관적-order-spike만) 참고.
+  - 락 타임아웃·재시도 전략 설계는 [lock-strategy-comparison.md §락 타임아웃·재시도 전략](../lock-strategy-comparison.md#락-타임아웃재시도-전략)에 정리됨.
+- **안정성·레질리언스** (적용 완료)
+  - Rate limiting, Circuit breaker(Resilience4j) 적용 및 실험 5 결과는 [PERF_RESULT](PERF_RESULT.md) 참고.
+- **관찰성**
+  - Prometheus + Grafana 대시보드 구성·사용법은 [deployment-monitoring.md §6](../deployment-monitoring.md) 참고. 포트폴리오용 스크린샷 포함 권장.
