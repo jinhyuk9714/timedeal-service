@@ -13,14 +13,15 @@ import com.timedeal.api.infrastructure.persistence.order.OrderRepository;
 import com.timedeal.api.infrastructure.persistence.stock.StockRepository;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import jakarta.persistence.OptimisticLockException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
 /**
  * 주문(Order) 관련 비즈니스 로직을 처리하는 Service 클래스
@@ -51,7 +52,10 @@ public class OrderService {
     private final UserService userService;
     private final StockRepository stockRepository;
     private final MeterRegistry meterRegistry;
-    
+
+    @Value("${order.lock-strategy:pessimistic}")
+    private String lockStrategy;
+
     /**
      * 주문 생성 메서드
      * 
@@ -88,22 +92,10 @@ public class OrderService {
                 throw new BusinessException(ErrorCode.TIMEDEAL_NOT_OPENED);
             }
 
-            // 4. 재고 확인 및 차감 (비관적 락 사용)
-            // - findByItemIdWithLock: SELECT FOR UPDATE로 락을 걸고 조회
-            // - 동시에 여러 주문이 들어와도 재고가 정확하게 관리됨
-            Stock stock = stockRepository.findByItemIdWithLock(request.getItemId())
-                    .orElseThrow(() -> new BusinessException(ErrorCode.STOCK_NOT_FOUND));
-
-            // 5. 재고 부족 체크
-            if (stock.getQuantity() < request.getQuantity()) {
-                throw new BusinessException(ErrorCode.INSUFFICIENT_STOCK);
-            }
-
-            // 6. 재고 차감
-            // - 도메인 객체의 메서드를 통해 비즈니스 로직 실행
-            // - 재고가 부족하면 도메인 객체에서 예외 발생
-            stock.decrease(request.getQuantity());
-            stockRepository.save(stock); // 변경사항 저장
+            // 4. 재고 확인 및 차감 (B-3: 비관적/낙관적 락 전략 분기)
+            // - pessimistic: findByItemIdWithLock (SELECT FOR UPDATE)
+            // - optimistic: findByItemId 후 save, OptimisticLockException 시 최대 3회 재시도
+            acquireStockAndDecrease(request.getItemId(), request.getQuantity());
 
             // 7. 주문 생성
             // - Builder 패턴으로 객체 생성 (가독성 향상)
@@ -134,6 +126,33 @@ public class OrderService {
                     .register(meterRegistry));
             throw e;
         }
+    }
+
+    /**
+     * B-3: 재고 조회·차감. pessimistic이면 FOR UPDATE, optimistic이면 일반 조회 후 save(재시도 최대 3회).
+     */
+    private Stock acquireStockAndDecrease(Long itemId, int quantity) {
+        boolean optimistic = "optimistic".equals(lockStrategy);
+        int maxRetries = optimistic ? 3 : 1;
+        Stock stock = null;
+        for (int attempt = 0; attempt < maxRetries; attempt++) {
+            stock = optimistic
+                    ? stockRepository.findByItemId(itemId).orElseThrow(() -> new BusinessException(ErrorCode.STOCK_NOT_FOUND))
+                    : stockRepository.findByItemIdWithLock(itemId).orElseThrow(() -> new BusinessException(ErrorCode.STOCK_NOT_FOUND));
+            if (stock.getQuantity() < quantity) {
+                throw new BusinessException(ErrorCode.INSUFFICIENT_STOCK);
+            }
+            stock.decrease(quantity);
+            try {
+                stockRepository.saveAndFlush(stock);
+                return stock;
+            } catch (OptimisticLockException e) {
+                if (attempt == maxRetries - 1) {
+                    throw new BusinessException(ErrorCode.INSUFFICIENT_STOCK);
+                }
+            }
+        }
+        return stock;
     }
     
     public OrderResponse getOrder(Long id) {

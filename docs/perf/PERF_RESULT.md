@@ -21,6 +21,8 @@
   - **10 VU · 10분** 동안 로그인 + 목록/상세 + 30% 확률 주문 혼합: **에러율 0%**, **p95 ≈ 118ms**, 약 **29 RPS**로 안정 동작.
 - **캐시 도입 (B-2, Caffeine)**
   - 상품 목록·상세 캐시 적용 후 basic-read 20 VU 60s: **p95 38.8ms → 11.6ms**(약 70% 개선), RPS ≈ 39.5, 에러율 0%.
+- **락 전략 비교 (B-3)**
+  - 주문 재고 차감 시 비관적 락(기본) vs 낙관적 락(`@Version` + 재시도) 전환 가능. `order.lock-strategy`·`perf-optimistic` 프로파일로 낙관적 락 측정 후 8절 표에 기입.
 
 ---
 
@@ -442,4 +444,55 @@ B-2는 **상품 목록·상세**(`GET /api/items`, `GET /api/items/{id}`)에만 
 - **p95에 미치는 영향**: k6의 `http_req_duration` p95는 **모든 요청**을 한데 묶어 계산한다. 목록·상세는 캐시로 빨라지지만, 로그인·주문 요청은 여전히 수십~수백 ms대라, **전체 요청의 p95는 이 “느린 요청” 쪽으로 끌려 올라간다**. 그래서 basic-read처럼 “거의 전부 캐시 히트”인 경우와 달리, soak에서는 p95가 크게 내려가 보이지 않는다.
 - **RPS가 거의 안 오른 이유**: 1 iteration 끝에 `sleep(1)`이 있어, VU당 초당 1번 꼴로만 다음 iteration을 돌린다. 목록·상세를 아무리 빨리 처리해도, **로그인 + (30%) 주문 + 1초 대기** 때문에 초당 요청 수 상한이 이미 정해져 있어, 캐시만으로는 RPS가 크게 늘지 않는다.
 - **정리**: soak에서 “목록·상세만” 보면 캐시로 체감 지연은 줄었을 수 있지만, **전체 시나리오**에서는 비캐시(로그인·주문) 비중과 스크립트 구조(sleep, 혼합 비율) 때문에 **종합 지표(RPS, p95)에는 basic-read만큼의 개선이 드러나지 않는다**.
+
+---
+
+### 8. 락 전략 비교 실험 (B-3)
+
+**목적**: 주문 재고 차감 시 **비관적 락(PESSIMISTIC_WRITE)** vs **낙관적 락(@Version)** 전략에 따른 처리량·레이턴시·성공률 차이를 order-spike로 비교.
+
+**적용 내용**  
+- **비관적 락(기존)**: `StockRepository.findByItemIdWithLock` (SELECT … FOR UPDATE) 후 차감·저장.  
+- **낙관적 락**: `Stock` 엔티티에 `@Version Long version` 추가, `findByItemId`(일반 조회) 후 차감·`saveAndFlush`. `OptimisticLockException` 시 최대 3회 재시도, 실패 시 `INSUFFICIENT_STOCK` 처리.
+
+**전략 전환**  
+- `order.lock-strategy`: `pessimistic`(기본) | `optimistic`  
+- **perf**: `application-perf.yml` → `pessimistic`  
+- **낙관적 락**: `--spring.profiles.active=perf,perf-optimistic` 으로 기동. `application-perf-optimistic.yml`이 `order.lock-strategy: optimistic` 만 덮어씀.
+
+**사전 작업 (B-3 적용 후 필수)**  
+- `Stock` 엔티티에 `@Version`이 추가되었으므로, **perf·perf-optimistic 모두** 기동 전에 `stocks` 테이블에 `version` 컬럼이 있어야 함. 없으면 아래 DDL 실행 후 기동.
+  ```sql
+  ALTER TABLE stocks ADD COLUMN version BIGINT NOT NULL DEFAULT 0;
+  ```
+- perf 프로파일은 `ddl-auto: validate`이므로, 스키마는 미리 위와 같이 맞춰 두어야 함.
+
+**측정 방법**  
+1. **비관적 락**: `./gradlew bootRun --args='--spring.profiles.active=perf'` 후  
+   `TEST_EMAIL=... TEST_PASSWORD=... ITEM_ID=1 QUANTITY=1 k6 run perf/k6/order-spike.js`  
+2. **낙관적 락**: `version` 컬럼 추가 후 `--spring.profiles.active=perf,perf-optimistic` 으로 기동, 동일 k6 실행.  
+3. 아래 표의 "낙관적 락" 열에 RPS·p95·http_req_failed·orders_success_201(또는 실패 분포) 기입.
+
+**Baseline(비관적 락)**  
+- 3절·6절의 order-spike(재고 충분) 수치: RPS ≈ 160~167, p95 ≈ 960~987ms, 에러율 0%, 주문 201 성공 다수.
+
+#### 8-1. 결과 비교표 (측정 후 기입)
+
+| 시나리오 | 지표 | 비관적 락 | 낙관적 락 |
+|----------|------|------------|------------|
+| order-spike (재고 충분) | RPS | ≈ 162 | **≈ 144.7** |
+| order-spike (재고 충분) | p95 | ≈ 935ms | **≈ 1170ms** |
+| order-spike (재고 충분) | http_req_failed | 0% | **23.32%** |
+| order-spike (재고 충분) | orders_success_201 | ≈ 6594 | **3118** |
+
+**해석**  
+- **비관적 락**: 조회 시점에 `SELECT … FOR UPDATE`로 락을 걸어, 동시에 한 트랜잭션만 해당 행을 갱신. 200 VU 스파이크에서 RPS ≈ 162, p95 ≈ 935ms, 에러율 0%, 주문 성공 ≈ 6594건.
+- **낙관적 락**: 락 없이 조회 후 `saveAndFlush` 시점에 version 충돌 시 최대 3회 재시도. 동일 부하에서 **RPS ≈ 144.7**, **p95 ≈ 1170ms**, **http_req_failed 23.32%**, **orders_success_201 3118**, **orders_5xx 2727**로 관측됨.
+- **비교**: 이 부하(0→200 VU, 동일 아이템·재고)에서는 비관적 락이 처리량·성공 건수·에러율 모두 유리함. 낙관적 락은 충돌 시 재시도 후 실패(5xx 또는 INSUFFICIENT_STOCK)가 많아져, 동시 주문이 몰리는 스파이크 구간에서는 비관적 락이 더 적합한 선택으로 보임.
+
+**낙관적 락 측정에서 실패(orders_5xx·http_req_failed)가 나는 이유**  
+- **Version 충돌**: 낙관적 락은 조회 시점에 락을 걸지 않는다. 수백 개 VU가 같은 `stocks` 행을 동시에 읽고, 각자 `quantity`를 줄인 뒤 `saveAndFlush`한다. 먼저 커밋된 트랜잭션이 `version`을 1 올리면, 그 뒤에 커밋하려는 트랜잭션은 “이미 version이 바뀌었다”는 **OptimisticLockException**을 받게 된다.
+- **재시도 후에도 실패**: `OrderService`는 이 예외를 잡아서 같은 로직을 최대 3번 재시도한다. 3번 다 충돌하면 `BusinessException(INSUFFICIENT_STOCK)`을 던져 400으로 내려보내도록 되어 있다. 그런데 k6에서는 **orders_5xx**로 많이 잡혔다.  
+  - 가능한 원인: (1) **OptimisticLockException**이 재시도 루프 밖(예: 다른 스택 경로)에서 잡히지 않고 나가면, Spring 기본 처리로 **500**이 반환될 수 있음. (2) 재시도·롤백이 반복되는 동안 **트랜잭션 타임아웃·DB 연결 대기** 등으로 500이 날 수 있음. (3) 부하가 높을 때 **스레드 풀·연결 풀 포화**로 인한 500.
+- **정리**: “같은 행을 여러 트랜잭션이 동시에 고쳐서 version 충돌이 나고, 재시도해도 계속 충돌하거나 예외가 5xx로 나간다”가 실패의 근본 원인이다. 동시에 같은 상품을 많이 주문하는 스파이크에서는 비관적 락처럼 “조회 시점에 한 명만 보게 하는” 방식이 유리하다.
 

@@ -24,6 +24,10 @@ public class Stock {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Version
+    @Column(nullable = false)
+    private Long version;
+
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "item_id", nullable = false, unique = true)
     private Item item;
@@ -52,6 +56,7 @@ public class Stock {
     public Stock(Item item, Integer quantity) {
         this.item = item;
         this.quantity = quantity;
+        this.version = 0L;
     }
 
     public void decrease(int quantity) {

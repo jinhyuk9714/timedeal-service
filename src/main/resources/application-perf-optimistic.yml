@@ -1,0 +1,4 @@
+# B-3 낙관적 락 실험용. perf와 함께 켜서 order.lock-strategy만 덮어씀.
+# 기동: ./gradlew bootRun --args='--spring.profiles.active=perf,perf-optimistic'
+order:
+  lock-strategy: optimistic

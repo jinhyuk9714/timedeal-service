@@ -1,6 +1,10 @@
 server:
   port: 8080
 
+# B-3 락 전략: pessimistic(비관적, 기본) | optimistic(낙관적). perf-optimistic 프로파일에서 optimistic 사용.
+order:
+  lock-strategy: pessimistic
+
 jwt:
   # 실제 성능 테스트에서는 환경변수/외부 설정으로 교체하는 것이 이상적이지만,
   # 여기서는 local과 동일하게 둡니다.
