@@ -24,7 +24,7 @@
 - **상품 검색**: Querydsl 기반 상품명·가격·오픈시간 범위 필터
 - **API 문서**: Swagger UI (`/swagger-ui.html`), 헬스·메트릭(`/actuator/**`)
 
-상세 구조와 API 엔드포인트는 **[PROJECT_STRUCTURE.md](./PROJECT_STRUCTURE.md)**를 참고하세요.
+상세 구조와 API 엔드포인트는 **[docs/PROJECT_STRUCTURE.md](./docs/PROJECT_STRUCTURE.md)**를 참고하세요.
 
 ---
 
@@ -80,10 +80,13 @@ k6와 `perf` 프로파일로 부하·스파이크·Soak 시나리오를 수행�
 
 ## 관련 문서
 
-- [PROJECT_STRUCTURE.md](./PROJECT_STRUCTURE.md) — 프로젝트 구조, 레이어, API, 테스트 가이드
 - [docs/README.md](./docs/README.md) — 문서 목차 (가이드·성능·운영 문서 한눈에)
+- [docs/PROJECT_STRUCTURE.md](./docs/PROJECT_STRUCTURE.md) — 프로젝트 구조, 레이어, API, 테스트 가이드
 - [docs/deployment-monitoring.md](./docs/deployment-monitoring.md) — 배포·모니터링 가이드 (실행 방법, 헬스·메트릭·로그)
 - [docs/perf/PERF_TEST_PLAN.md](./docs/perf/PERF_TEST_PLAN.md) — 성능 테스트 계획·SLO·시나리오
 - [docs/perf/PERF_RESULT.md](./docs/perf/PERF_RESULT.md) — 성능 테스트 실측 결과 리포트
 - [docs/lock-strategy-comparison.md](./docs/lock-strategy-comparison.md) — 비관적 vs 낙관적 락 비교 (한 페이지 요약)
-- [PESSIMISTIC_LOCK_GUIDE.md](./PESSIMISTIC_LOCK_GUIDE.md) — 비관적 락 개념·구현·동작 원리·SQL
+- [docs/guides/PESSIMISTIC_LOCK_GUIDE.md](./docs/guides/PESSIMISTIC_LOCK_GUIDE.md) — 비관적 락 개념·구현·동작 원리·SQL
+- [docs/guides/JWT_GUIDE.md](./docs/guides/JWT_GUIDE.md) — JWT 인증 흐름, 로그인/로그아웃 사용법
+- [docs/guides/PAGING_GUIDE.md](./docs/guides/PAGING_GUIDE.md) — 페이징 개념, Pageable/Page 사용법
+- [docs/guides/POSTMAN_SETUP_GUIDE.md](./docs/guides/POSTMAN_SETUP_GUIDE.md) · [docs/guides/POSTMAN_ENDPOINTS_GUIDE.md](./docs/guides/POSTMAN_ENDPOINTS_GUIDE.md) — Postman 설정·엔드포인트 예시

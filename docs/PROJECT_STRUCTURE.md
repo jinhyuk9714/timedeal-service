@@ -266,13 +266,22 @@ timedeal-service/
 ├── build.gradle
 ├── settings.gradle
 ├── compose.yaml
-├── JWT_GUIDE.md
-├── PAGING_GUIDE.md
-├── PESSIMISTIC_LOCK_GUIDE.md
-├── POSTMAN_ENDPOINTS_GUIDE.md
-├── POSTMAN_SETUP_GUIDE.md
-├── PROJECT_STRUCTURE.md
-└── README-GRADLE-WRAPPER.md
+├── README.md
+└── docs/
+    ├── README.md                 # 문서 목차
+    ├── PROJECT_STRUCTURE.md      # 이 문서
+    ├── deployment-monitoring.md
+    ├── lock-strategy-comparison.md
+    ├── README-GRADLE-WRAPPER.md
+    ├── guides/
+    │   ├── JWT_GUIDE.md
+    │   ├── PAGING_GUIDE.md
+    │   ├── PESSIMISTIC_LOCK_GUIDE.md
+    │   ├── POSTMAN_SETUP_GUIDE.md
+    │   └── POSTMAN_ENDPOINTS_GUIDE.md
+    └── perf/
+        ├── PERF_TEST_PLAN.md
+        └── PERF_RESULT.md
 ```
 
 ---
@@ -290,7 +299,7 @@ timedeal-service/
 ### 3. 비관적 락 (Pessimistic Lock)
 
 - `StockRepository.findByItemIdWithLock()` → `SELECT ... FOR UPDATE`
-- 주문 생성 시 재고 조회·차감 구간에서만 사용. 자세한 내용은 `PESSIMISTIC_LOCK_GUIDE.md` 참고.
+- 주문 생성 시 재고 조회·차감 구간에서만 사용. 자세한 내용은 [guides/PESSIMISTIC_LOCK_GUIDE.md](guides/PESSIMISTIC_LOCK_GUIDE.md) 참고.
 
 ### 4. JPA 영속성 컨텍스트
 
@@ -376,11 +385,11 @@ timedeal-service/
 
 | 문서 | 설명 |
 |------|------|
-| `JWT_GUIDE.md` | JWT 인증 흐름, 로그인/로그아웃 사용법 |
-| `PAGING_GUIDE.md` | 페이징 개념, Pageable/Page 사용법, API 예시 |
-| `PESSIMISTIC_LOCK_GUIDE.md` | 비관적 락 동작 원리, SQL, 주의사항 |
-| `POSTMAN_ENDPOINTS_GUIDE.md` | 엔드포인트별 요청/응답 예시 |
-| `POSTMAN_SETUP_GUIDE.md` | Postman JWT 자동 저장 등 설정 |
+| [guides/JWT_GUIDE.md](guides/JWT_GUIDE.md) | JWT 인증 흐름, 로그인/로그아웃 사용법 |
+| [guides/PAGING_GUIDE.md](guides/PAGING_GUIDE.md) | 페이징 개념, Pageable/Page 사용법, API 예시 |
+| [guides/PESSIMISTIC_LOCK_GUIDE.md](guides/PESSIMISTIC_LOCK_GUIDE.md) | 비관적 락 동작 원리, SQL, 주의사항 |
+| [guides/POSTMAN_ENDPOINTS_GUIDE.md](guides/POSTMAN_ENDPOINTS_GUIDE.md) | 엔드포인트별 요청/응답 예시 |
+| [guides/POSTMAN_SETUP_GUIDE.md](guides/POSTMAN_SETUP_GUIDE.md) | Postman JWT 자동 저장 등 설정 |
 
 ---
 

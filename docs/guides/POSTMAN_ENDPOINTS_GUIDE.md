@@ -912,7 +912,7 @@ if (pm.response.code === 200) {
 
 - [JWT 인증 가이드](./JWT_GUIDE.md)
 - [Postman 설정 가이드](./POSTMAN_SETUP_GUIDE.md)
-- [프로젝트 구조](./PROJECT_STRUCTURE.md)
+- [프로젝트 구조](../PROJECT_STRUCTURE.md)
 
 ---
 

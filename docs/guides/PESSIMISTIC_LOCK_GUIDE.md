@@ -225,7 +225,7 @@ COMMIT;
 
 ## 비관적 락 vs 낙관적 락
 
-> **한 페이지 비교 정리**: 락 거는 시점·동작·적합한 상황·이 프로젝트 적용까지 요약한 문서는 [docs/lock-strategy-comparison.md](docs/lock-strategy-comparison.md)를 참고하면 된다.
+> **한 페이지 비교 정리**: 락 거는 시점·동작·적합한 상황·이 프로젝트 적용까지 요약한 문서는 [lock-strategy-comparison.md](../lock-strategy-comparison.md)를 참고하면 된다.
 
 ### 비교표
 

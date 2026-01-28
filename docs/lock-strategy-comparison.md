@@ -58,5 +58,5 @@
 
 ## 더 읽을 거리
 
-- **[PESSIMISTIC_LOCK_GUIDE.md](../PESSIMISTIC_LOCK_GUIDE.md)** — 비관적 락 개념·구현·동작 원리·SQL·주의사항.
+- **[PESSIMISTIC_LOCK_GUIDE.md](guides/PESSIMISTIC_LOCK_GUIDE.md)** — 비관적 락 개념·구현·동작 원리·SQL·주의사항.
 - **[PERF_RESULT](perf/PERF_RESULT.md)** 8절 — 락 전략 비교 실험(B-3) 측정 방법·결과표·해석.
