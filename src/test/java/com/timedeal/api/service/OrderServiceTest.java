@@ -12,11 +12,12 @@ import com.timedeal.api.support.TestFixtures;
 import com.timedeal.api.exception.ErrorCode;
 import com.timedeal.api.infrastructure.persistence.order.OrderRepository;
 import com.timedeal.api.infrastructure.persistence.stock.StockRepository;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -59,7 +60,8 @@ class OrderServiceTest {
     @Mock
     private StockRepository stockRepository;
 
-    @InjectMocks
+    private final MeterRegistry meterRegistry = new SimpleMeterRegistry();
+
     private OrderService orderService;
 
     private User user;
@@ -73,6 +75,9 @@ class OrderServiceTest {
         item = TestFixtures.itemOpened(1L);
         stock = TestFixtures.stock(item, 100, 1L);
         orderRequest = TestFixtures.orderRequest(1L, 2);
+        // OrderService에 MeterRegistry 주입 (createOrder 내부 Timer용)
+        orderService = new OrderService(
+                orderRepository, itemService, userService, stockRepository, meterRegistry);
     }
 
     @Test

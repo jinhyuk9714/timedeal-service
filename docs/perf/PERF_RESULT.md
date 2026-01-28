@@ -19,6 +19,8 @@
     - → **주요 병목은 비즈니스 로직보다 DB I/O, 네트워크, 필터 체인 등 외부 요소에 더 가까움**.
 - **Soak 시나리오 (장시간 부하)**
   - **10 VU · 10분** 동안 로그인 + 목록/상세 + 30% 확률 주문 혼합: **에러율 0%**, **p95 ≈ 118ms**, 약 **29 RPS**로 안정 동작.
+- **캐시 도입 (B-2, Caffeine)**
+  - 상품 목록·상세 캐시 적용 후 basic-read 20 VU 60s: **p95 38.8ms → 11.6ms**(약 70% 개선), RPS ≈ 39.5, 에러율 0%.
 
 ---
 
@@ -317,6 +319,9 @@ k6 run perf/k6/soak-mixed.js
 - **p95 ≈ 118ms**로, 기본 READ 시나리오(20 VU 기준 p95 ≈ 39ms)보다는 다소 높지만, 장시간 부하에서 **SLO(p95 ≤ 300ms, 에러율 < 0.5%)를 여유 있게 만족**.
 - Soak 관점에서 **메모리 누수·연결 풀 고갈·점진적 성능 저하 없이** 10분 구간이 안정적으로 유지되었음을 확인.
 
+**추가 스냅샷**  
+- 동일 perf 기동(캐시 적용) 상태에서 B-2 측정 시 함께 돌린 soak-mixed: RPS ≈ 29.5, p95 ≈ 119ms, 에러율 0%.
+
 ---
 
 ### 5. 현재까지의 결론 및 다음 단계 제안
@@ -339,4 +344,102 @@ k6 run perf/k6/soak-mixed.js
 4. **향후 리포트 확장 방향**
    - 튜닝 전/후(예: 인덱스 추가, Hikari 풀 조정, 캐시 도입 등) 수치를 표/그래프로 비교.
    - 비관적 락 전략과 낙관적 락/분산 락과의 비교 실험을 진행한 후, 결과를 이 문서에 추가.
+
+---
+
+### 6. Hikari 풀 조정 실험 (B-1)
+
+**목적**: connection pool 크기·유휴 연결 수 조정이 스파이크·Soak 구간에서 성능에 미치는지 비교.
+
+**Baseline (현재)**  
+- `application-perf.yml` 기준: `maximum-pool-size: 30`, `minimum-idle: 10`  
+- 2~4절 수치는 모두 이 설정으로 측정됨.
+
+**조정안**  
+- `maximum-pool-size: 50`, `minimum-idle: 20`
+
+**조정 후 측정 방법**  
+1. perf 프로파일로 기동할 때 환경변수로 오버라이드:
+   ```bash
+   SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=50 \
+   SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE=20 \
+   ./gradlew bootRun --args='--spring.profiles.active=perf'
+   ```
+2. 동일 k6 스크립트로 재측정: `basic-read`(20 VU 60s), `order-spike`, `soak-mixed` 등.
+3. 아래 표의 "조정 (50/20)" 열에 수치 기입.
+
+#### 6-1. 결과 비교표 (측정 후 기입)
+
+| 시나리오 | 지표 | Baseline (30/10) | 조정 (50/20) |
+|----------|------|------------------|--------------|
+| basic-read (20 VU 60s) | RPS | ≈ 38.5 | **≈ 38.5** |
+| basic-read (20 VU 60s) | p95 | ≈ 38.8ms | **≈ 34ms** |
+| basic-read (20 VU 60s) | http_req_failed | 0% | **0%** |
+| order-spike (재고 충분) | RPS | ≈ 160 | **≈ 167.6** |
+| order-spike (재고 충분) | p95 | ≈ 960ms | **≈ 987ms** |
+| order-spike (재고 충분) | http_req_failed | 0% | **0%** |
+| soak-mixed (10 VU 10분) | RPS | ≈ 29 | **≈ 29** |
+| soak-mixed (10 VU 10분) | p95 | ≈ 118ms | **≈ 129ms** |
+| soak-mixed (10 VU 10분) | http_req_failed | 0% | **0%** |
+
+**참고**  
+- **basic-read** 조정(50/20): 동일 조건(20 VU 60s, perf + 풀 50/20)으로 측정.
+- **order-spike**, **soak-mixed** 조정(50/20): `TEST_EMAIL=user@example.com TEST_PASSWORD=password123 ITEM_ID=1 QUANTITY=1` 로 동일 조건에서 측정.
+- **추가 스냅샷**: perf + 캐시 적용 기동 상태에서 B-2 측정 시 함께 실행한 order-spike(RPS ≈ 162.8, p95 ≈ 935ms), soak-mixed(RPS ≈ 29.5, p95 ≈ 119ms) — 4절·7절과 동일 run.
+
+**해석**  
+- **basic-read**: 풀 30/10 → 50/20 변경 시 RPS 거의 동일(≈ 38.5), p95 38.8ms → 34ms로 소폭 개선. READ 위주 부하에서는 풀 30으로 충분해 풀 확대 효과는 미미함.
+- **order-spike**: 조정(50/20)에서 RPS ≈ 167.6, p95 ≈ 987ms, 에러율 0%. Baseline(≈ 160 RPS, p95 ≈ 960ms) 대비 RPS 소폭 상승·p95 소폭 증가로, 풀 확대만으로는 스파이크 구간 레이턴시가 눈에 띄게 좋아지지 않음. 주문 6784건 201 성공.
+- **soak-mixed**: 조정(50/20)에서 RPS ≈ 29, p95 ≈ 129ms, 에러율 0%. Baseline(≈ 29 RPS, p95 ≈ 118ms)과 비슷한 수준. 장시간 부하에서는 풀 크기 차이가 체감되지 않음.
+- **종합**: 현재 부하 수준(README/스파이크 ~160 RPS, Soak ~29 RPS)에서는 풀 30/10으로도 충분하고, 50/20으로 늘려도 처리량·레이턴시 개선폭은 크지 않음. connection 대기로 인한 병목이 드러날 만큼의 부하는 아니었던 것으로 해석 가능.
+
+---
+
+### 7. 캐시 도입 실험 (B-2)
+
+**목적**: 상품 목록·상세에 Caffeine 인메모리 캐시를 적용한 뒤 basic-read로 재측정해, 캐시 미적용 대비 처리량·레이턴시 변화를 비교.
+
+**적용 범위**  
+- `GET /api/items`(목록): `ItemService.getItems()` → 캐시 `itemList`, 키는 condition + pageable  
+- `GET /api/items/{id}`(상세): `ItemService.getItem(id)` → 캐시 `items`, 키는 id  
+- 상품 생성/수정/삭제 시 해당 캐시 무효화(`@CacheEvict`)
+
+**설정**  
+- `CacheConfig`: Caffeine `maximumSize=10_000`, `expireAfterWrite=10분`  
+- `build.gradle`: `spring-boot-starter-cache`, `caffeine` 의존성 추가
+
+**측정 방법**  
+1. perf 프로파일로 기동: `./gradlew bootRun --args='--spring.profiles.active=perf'`  
+2. basic-read 실행: `VUS=20 DURATION=60s k6 run perf/k6/basic-read.js`  
+3. 아래 표의 "캐시 있음" 열에 RPS·p95·http_req_failed 기입.
+
+**Baseline(캐시 없음)**  
+- 2절·6절의 basic-read 20 VU 60s 수치(풀 30/10 또는 50/20 공통): RPS ≈ 38.5, p95 ≈ 38.8ms(또는 34ms), 에러율 0%.
+
+#### 7-1. 결과 비교표
+
+B-2는 **상품 목록·상세**(`GET /api/items`, `GET /api/items/{id}`)에만 캐시를 적용했다. **order-spike**는 로그인+주문만 호출해 목록/상세를 쓰지 않으므로 캐시 효과가 없고, **soak-mixed**는 로그인+목록+상세+주문이라 목록/상세 구간에서 캐시 히트가 발생한다.
+
+| 시나리오 | 지표 | 캐시 없음 | 캐시 있음 (Caffeine) |
+|----------|------|-----------|----------------------|
+| basic-read (20 VU 60s) | RPS | ≈ 38.5 | **≈ 39.5** |
+| basic-read (20 VU 60s) | p95 | ≈ 38.8ms | **≈ 11.6ms** |
+| basic-read (20 VU 60s) | http_req_failed | 0% | **0%** |
+| order-spike (재고 충분) | RPS | ≈ 160 | — (목록/상세 미호출) |
+| order-spike (재고 충분) | p95 | ≈ 960ms | — (목록/상세 미호출) |
+| order-spike (재고 충분) | http_req_failed | 0% | — (목록/상세 미호출) |
+| soak-mixed (10 VU 10분) | RPS | ≈ 29.3 | **≈ 29.5** |
+| soak-mixed (10 VU 10분) | p95 | ≈ 118ms | **≈ 119ms** |
+| soak-mixed (10 VU 10분) | http_req_failed | 0% | **0%** |
+
+**해석**  
+- **basic-read**: Caffeine 캐시 적용 후 목록·상세 반복 요청이 캐시 히트되어 **p95가 38.8ms → 11.6ms로 약 70% 개선**. RPS는 38.5 → 39.5로 소폭 상승.
+- **order-spike**: 로그인·주문 API만 사용하므로 목록/상세 캐시 적용 대상이 아님. 표에는 "—(목록/상세 미호출)"로 두고, 캐시 유무 비교는 하지 않음.
+- **soak-mixed**: 목록·상세·주문을 섞어 호출하므로 목록/상세 구간은 캐시 히트. 캐시 있음 측정에서 RPS ≈ 29.5, p95 ≈ 119ms로 4절 baseline(≈ 29.3 RPS, ≈ 118ms)과 비슷한 수준.
+
+**soak-mixed에서 basic-read만큼 개선이 뚜렷하지 않은 이유**  
+- **요청 구성**: soak-mixed 1 iteration = 로그인(1회) + 목록(1회) + 상세(1회) + 주문(약 30% 확률). 캐시가 적용된 건 목록·상세뿐이고, **로그인·주문은 매번 서버/DB를 타므로** 그 구간 레이턴시는 그대로다.
+- **p95에 미치는 영향**: k6의 `http_req_duration` p95는 **모든 요청**을 한데 묶어 계산한다. 목록·상세는 캐시로 빨라지지만, 로그인·주문 요청은 여전히 수십~수백 ms대라, **전체 요청의 p95는 이 “느린 요청” 쪽으로 끌려 올라간다**. 그래서 basic-read처럼 “거의 전부 캐시 히트”인 경우와 달리, soak에서는 p95가 크게 내려가 보이지 않는다.
+- **RPS가 거의 안 오른 이유**: 1 iteration 끝에 `sleep(1)`이 있어, VU당 초당 1번 꼴로만 다음 iteration을 돌린다. 목록·상세를 아무리 빨리 처리해도, **로그인 + (30%) 주문 + 1초 대기** 때문에 초당 요청 수 상한이 이미 정해져 있어, 캐시만으로는 RPS가 크게 늘지 않는다.
+- **정리**: soak에서 “목록·상세만” 보면 캐시로 체감 지연은 줄었을 수 있지만, **전체 시나리오**에서는 비캐시(로그인·주문) 비중과 스크립트 구조(sleep, 혼합 비율) 때문에 **종합 지표(RPS, p95)에는 basic-read만큼의 개선이 드러나지 않는다**.
 

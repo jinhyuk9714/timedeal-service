@@ -11,12 +11,18 @@ import com.timedeal.api.infrastructure.persistence.item.ItemRepository;
 import com.timedeal.api.infrastructure.persistence.order.OrderRepository;
 import com.timedeal.api.infrastructure.persistence.stock.StockRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+
+import static com.timedeal.api.infrastructure.config.CacheConfig.CACHE_ITEMS;
+import static com.timedeal.api.infrastructure.config.CacheConfig.CACHE_ITEM_LIST;
 
 @Service
 @RequiredArgsConstructor
@@ -28,6 +34,7 @@ public class ItemService {
     private final OrderRepository orderRepository;
     
     @Transactional
+    @CacheEvict(value = CACHE_ITEM_LIST, allEntries = true)
     public ItemResponse createItem(ItemRequest request) {
         Item item = Item.builder()
                 .name(request.getName())
@@ -49,11 +56,9 @@ public class ItemService {
     }
     
     /**
-     * 상품 조회 (단건)
-     * 
-     * @param id: 상품 ID
-     * @return ItemResponse (상품 정보 + 재고 수량)
+     * 상품 조회 (단건). B-2 Caffeine 캐시 적용.
      */
+    @Cacheable(value = CACHE_ITEMS, key = "#id")
     public ItemResponse getItem(Long id) {
         Item item = itemRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ITEM_NOT_FOUND));
@@ -66,13 +71,9 @@ public class ItemService {
     }
     
     /**
-     * 전체 상품 목록 조회 (페이징)
-     * 검색 조건이 없으면 전체 조회, 있으면 Querydsl로 필터링
-     *
-     * @param condition 검색 조건 (상품명, 가격 범위, 오픈 시간 범위). null이거나 조건 없음 시 전체 조회
-     * @param pageable  페이징 정보 (page, size, sort)
-     * @return Page<ItemResponse> (상품 목록 + 각 상품의 재고 수량 + 페이징 정보)
+     * 전체 상품 목록 조회 (페이징). B-2 Caffeine 캐시 적용.
      */
+    @Cacheable(value = CACHE_ITEM_LIST, keyGenerator = "itemListCacheKeyGenerator")
     public Page<ItemResponse> getItems(ItemSearchCondition condition, Pageable pageable) {
         Page<Item> itemPage = (condition != null && condition.hasAnyCondition())
                 ? itemRepository.findByCondition(condition, pageable)
@@ -100,14 +101,11 @@ public class ItemService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.ITEM_NOT_FOUND));
     }
     
-    /**
-     * 상품 수정 (관리자 전용)
-     * 
-     * @param id: 수정할 상품 ID
-     * @param request: 수정할 상품 정보
-     * @return ItemResponse (수정된 상품 정보)
-     */
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = CACHE_ITEMS, key = "#id"),
+            @CacheEvict(value = CACHE_ITEM_LIST, allEntries = true)
+    })
     public ItemResponse updateItem(Long id, ItemRequest request) {
         Item item = itemRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ITEM_NOT_FOUND));
@@ -126,12 +124,8 @@ public class ItemService {
         return new ItemResponse(savedItem, savedStock);
     }
     
-    /**
-     * 상품 삭제 (관리자 전용)
-     * 
-     * @param id: 삭제할 상품 ID
-     */
     @Transactional
+    @CacheEvict(value = { CACHE_ITEMS, CACHE_ITEM_LIST }, allEntries = true)
     public void deleteItem(Long id) {
         Item item = itemRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ITEM_NOT_FOUND));

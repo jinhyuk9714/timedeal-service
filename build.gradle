@@ -34,6 +34,11 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-cache'
+    
+    // Caffeine (B-2 상품 목록/상세 캐시). CaffeineCacheManager 사용을 위해 context-support 포함
+    implementation 'com.github.ben-manes.caffeine:caffeine'
+    implementation 'org.springframework:spring-context-support'
     
     // JWT
     implementation 'io.jsonwebtoken:jjwt-api:0.12.5'

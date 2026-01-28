@@ -28,6 +28,7 @@ spring:
     url: jdbc:p6spy:mysql://localhost:3306/timedeal?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
     username: timedeal
     password: timedeal
+    # Hikari 풀 조정 실험(B-1): 환경변수 SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=50, SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE=20 으로 오버라이드 가능. 기본 30/10.
     hikari:
       maximum-pool-size: 30
       minimum-idle: 10
