@@ -15,6 +15,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import jakarta.persistence.OptimisticLockException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -146,7 +147,7 @@ public class OrderService {
             try {
                 stockRepository.saveAndFlush(stock);
                 return stock;
-            } catch (OptimisticLockException e) {
+            } catch (OptimisticLockException | OptimisticLockingFailureException e) {
                 if (attempt == maxRetries - 1) {
                     throw new BusinessException(ErrorCode.INSUFFICIENT_STOCK);
                 }

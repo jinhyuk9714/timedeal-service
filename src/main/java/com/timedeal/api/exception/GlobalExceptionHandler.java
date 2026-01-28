@@ -1,6 +1,8 @@
 package com.timedeal.api.exception;
 
+import jakarta.persistence.OptimisticLockException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BindException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -25,6 +27,20 @@ public class GlobalExceptionHandler {
                 .body(errorResponse);
     }
     
+    /** 낙관적 락 충돌이 재시도 루프 밖으로 나온 경우 → 4xx(INSUFFICIENT_STOCK)로 응답. 5xx 방지. */
+    @ExceptionHandler({OptimisticLockException.class, OptimisticLockingFailureException.class})
+    public ResponseEntity<ErrorResponse> handleOptimisticLock(
+            Exception e, WebRequest request) {
+        log.warn("Optimistic lock conflict (mapped to 4xx): {}", e.getMessage());
+        ErrorResponse errorResponse = new ErrorResponse(
+                ErrorCode.INSUFFICIENT_STOCK,
+                request.getDescription(false).replace("uri=", "")
+        );
+        return ResponseEntity
+                .status(ErrorCode.INSUFFICIENT_STOCK.getStatus())
+                .body(errorResponse);
+    }
+
     @ExceptionHandler({MethodArgumentNotValidException.class, BindException.class})
     public ResponseEntity<ErrorResponse> handleValidationException(
             Exception e, WebRequest request) {

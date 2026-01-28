@@ -63,6 +63,8 @@ k6와 `perf` 프로파일로 부하·스파이크·Soak 시나리오를 수행�
 ## 관련 문서
 
 - [PROJECT_STRUCTURE.md](./PROJECT_STRUCTURE.md) — 프로젝트 구조, 레이어, API, 테스트 가이드
+- [docs/deployment-monitoring.md](./docs/deployment-monitoring.md) — 배포·모니터링 가이드 (실행 방법, 헬스·메트릭·로그)
 - [docs/perf/PERF_TEST_PLAN.md](./docs/perf/PERF_TEST_PLAN.md) — 성능 테스트 계획·SLO·시나리오
 - [docs/perf/PERF_RESULT.md](./docs/perf/PERF_RESULT.md) — 성능 테스트 실측 결과 리포트
-- [PESSIMISTIC_LOCK_GUIDE.md](./PESSIMISTIC_LOCK_GUIDE.md) — 비관적 락 사용 가이드
+- [docs/lock-strategy-comparison.md](./docs/lock-strategy-comparison.md) — 비관적 vs 낙관적 락 비교 (한 페이지 요약)
+- [PESSIMISTIC_LOCK_GUIDE.md](./PESSIMISTIC_LOCK_GUIDE.md) — 비관적 락 개념·구현·동작 원리·SQL
