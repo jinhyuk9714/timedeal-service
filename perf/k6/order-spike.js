@@ -14,12 +14,18 @@ const QUANTITY = Number(__ENV.QUANTITY || 1);
 const orders_total = new Counter("orders_total");
 const orders_success_201 = new Counter("orders_success_201");
 const orders_400_insufficient_stock = new Counter(
-  "orders_400_insufficient_stock"
+  "orders_400_insufficient_stock",
 );
 const orders_400_timedeal_not_opened = new Counter(
-  "orders_400_timedeal_not_opened"
+  "orders_400_timedeal_not_opened",
 );
 const orders_4xx_other = new Counter("orders_4xx_other");
+const orders_429_too_many_requests = new Counter(
+  "orders_429_too_many_requests",
+);
+const orders_503_service_unavailable = new Counter(
+  "orders_503_service_unavailable",
+);
 const orders_5xx = new Counter("orders_5xx");
 
 export const options = {
@@ -48,11 +54,7 @@ export function orderScenario() {
     quantity: QUANTITY,
   });
 
-  const res = http.post(
-    `${BASE_URL}/api/orders`,
-    payload,
-    authHeaders(token)
-  );
+  const res = http.post(`${BASE_URL}/api/orders`, payload, authHeaders(token));
 
   check(res, {
     "order status is 201": (r) => r.status === 201,
@@ -66,6 +68,10 @@ export function orderScenario() {
   const status = res.status;
   if (status === 201) {
     orders_success_201.add(1);
+  } else if (status === 429) {
+    orders_429_too_many_requests.add(1);
+  } else if (status === 503) {
+    orders_503_service_unavailable.add(1);
   } else if (status >= 500) {
     orders_5xx.add(1);
   } else if (status >= 400 && status < 500) {
@@ -88,4 +94,3 @@ export function orderScenario() {
 
   sleep(1);
 }
-

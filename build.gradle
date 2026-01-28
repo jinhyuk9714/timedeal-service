@@ -60,6 +60,11 @@ dependencies {
     // Swagger/OpenAPI (Spring Boot 4.0.2 호환)
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.1'
     
+    // Resilience4j (Rate limiting, Circuit breaker)
+    // Spring Boot 4.0.2 호환성: resilience4j-spring-boot3 최신 버전 사용
+    implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.3.0'
+    implementation 'io.github.resilience4j:resilience4j-reactor:2.3.0'
+    
     // Testcontainers
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test' // Spring Boot 4.0에서 필요

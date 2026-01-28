@@ -94,3 +94,19 @@ management:
       prometheus:
         enabled: true
 
+# Resilience4j 설정 (실험 5: Rate limiting / Circuit breaker)
+resilience4j:
+  ratelimiter:
+    instances:
+      orderCreate:
+        limit-for-period: 100  # 초당 100건 제한
+        limit-refresh-period: 1s
+        timeout-duration: 0ms  # 대기 없이 즉시 실패
+  circuitbreaker:
+    instances:
+      orderService:
+        failure-rate-threshold: 50  # 실패율 50% 초과 시 차단
+        wait-duration-in-open-state: 10s  # 차단 후 10초 대기
+        sliding-window-size: 10  # 최근 10회 호출 기준
+        minimum-number-of-calls: 10  # 최소 10회 호출 후 판단
+        permitted-number-of-calls-in-half-open-state: 3  # 반열림 상태에서 허용 호출 수

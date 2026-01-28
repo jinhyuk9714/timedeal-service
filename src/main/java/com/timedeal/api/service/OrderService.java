@@ -23,6 +23,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -78,6 +79,7 @@ public class OrderService {
      * - 다른 트랜잭션이 해당 재고를 수정하지 못하도록 락을 걸음
      * - 동시성 문제 해결 (여러 사용자가 동시에 주문해도 재고가 정확하게 차감됨)
      */
+    @CircuitBreaker(name = "orderService", fallbackMethod = "createOrderFallback")
     @Transactional
     public OrderResponse createOrder(Long userId, OrderRequest request) {
         Timer.Sample sample = Timer.start(meterRegistry);
@@ -216,6 +218,13 @@ public class OrderService {
     public Page<OrderResponse> getUserOrders(Long userId, Pageable pageable) {
         Page<Order> orderPage = orderRepository.findByUserId(userId, pageable);
         return orderPage.map(OrderResponse::new);
+    }
+
+    /**
+     * Circuit breaker fallback: DB 장애 시 503 Service Unavailable 반환
+     */
+    public OrderResponse createOrderFallback(Long userId, OrderRequest request, Exception ex) {
+        throw new BusinessException(ErrorCode.SERVICE_UNAVAILABLE);
     }
     
     /**

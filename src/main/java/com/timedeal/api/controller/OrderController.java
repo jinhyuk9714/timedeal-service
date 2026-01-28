@@ -22,6 +22,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
 
 /**
  * 주문(Order) 관련 REST API Controller
@@ -94,9 +95,11 @@ public class OrderController {
             ),
             @ApiResponse(responseCode = "400", description = "잘못된 요청 (타임딜 미오픈, 재고 부족, 필수 필드 누락)"),
             @ApiResponse(responseCode = "401", description = "인증되지 않은 사용자"),
-            @ApiResponse(responseCode = "404", description = "상품을 찾을 수 없음")
+            @ApiResponse(responseCode = "404", description = "상품을 찾을 수 없음"),
+            @ApiResponse(responseCode = "429", description = "요청 한도 초과 (Rate limiting)")
     })
     @SecurityRequirement(name = "bearerAuth")
+    @RateLimiter(name = "orderCreate")
     @PostMapping
     public ResponseEntity<OrderResponse> createOrder(
             @Valid @RequestBody OrderRequest request,
