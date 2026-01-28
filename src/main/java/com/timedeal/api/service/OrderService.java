@@ -9,6 +9,8 @@ import com.timedeal.api.dto.order.OrderRequest;
 import com.timedeal.api.dto.order.OrderResponse;
 import com.timedeal.api.exception.BusinessException;
 import com.timedeal.api.exception.ErrorCode;
+import com.timedeal.api.infrastructure.lock.StockLockHandle;
+import com.timedeal.api.infrastructure.lock.StockLockService;
 import com.timedeal.api.infrastructure.persistence.order.OrderRepository;
 import com.timedeal.api.infrastructure.persistence.stock.StockRepository;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -23,6 +25,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Optional;
 
 /**
  * 주문(Order) 관련 비즈니스 로직을 처리하는 Service 클래스
@@ -53,6 +56,7 @@ public class OrderService {
     private final UserService userService;
     private final StockRepository stockRepository;
     private final MeterRegistry meterRegistry;
+    private final StockLockService stockLockService;
 
     @Value("${order.lock-strategy:pessimistic}")
     private String lockStrategy;
@@ -93,9 +97,10 @@ public class OrderService {
                 throw new BusinessException(ErrorCode.TIMEDEAL_NOT_OPENED);
             }
 
-            // 4. 재고 확인 및 차감 (B-3: 비관적/낙관적 락 전략 분기)
+            // 4. 재고 확인 및 차감 (비관적/낙관적/분산 락 전략 분기)
             // - pessimistic: findByItemIdWithLock (SELECT FOR UPDATE)
             // - optimistic: findByItemId 후 save, OptimisticLockException 시 최대 3회 재시도
+            // - distributed: Redis 락 획득 후 findByItemId·차감·저장, 락 해제
             acquireStockAndDecrease(request.getItemId(), request.getQuantity());
 
             // 7. 주문 생성
@@ -130,9 +135,12 @@ public class OrderService {
     }
 
     /**
-     * B-3: 재고 조회·차감. pessimistic이면 FOR UPDATE, optimistic이면 일반 조회 후 save(재시도 최대 3회).
+     * 재고 조회·차감. pessimistic / optimistic / distributed 전략 분기.
      */
     private Stock acquireStockAndDecrease(Long itemId, int quantity) {
+        if ("distributed".equals(lockStrategy)) {
+            return acquireWithDistributedLock(itemId, quantity);
+        }
         boolean optimistic = "optimistic".equals(lockStrategy);
         int maxRetries = optimistic ? 3 : 1;
         Stock stock = null;
@@ -154,6 +162,42 @@ public class OrderService {
             }
         }
         return stock;
+    }
+
+    /**
+     * Redis 분산 락으로 재고 차감. 락 획득 실패 시 최대 3회 재시도.
+     */
+    private Stock acquireWithDistributedLock(Long itemId, int quantity) {
+        int maxRetries = 3;
+        for (int attempt = 0; attempt < maxRetries; attempt++) {
+            Optional<StockLockHandle> handleOpt = stockLockService.tryLock(itemId);
+            if (handleOpt.isEmpty()) {
+                if (attempt == maxRetries - 1) {
+                    throw new BusinessException(ErrorCode.INSUFFICIENT_STOCK);
+                }
+                try {
+                    Thread.sleep(10);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new BusinessException(ErrorCode.INSUFFICIENT_STOCK);
+                }
+                continue;
+            }
+            StockLockHandle handle = handleOpt.get();
+            try {
+                Stock stock = stockRepository.findByItemId(itemId)
+                        .orElseThrow(() -> new BusinessException(ErrorCode.STOCK_NOT_FOUND));
+                if (stock.getQuantity() < quantity) {
+                    throw new BusinessException(ErrorCode.INSUFFICIENT_STOCK);
+                }
+                stock.decrease(quantity);
+                stockRepository.saveAndFlush(stock);
+                return stock;
+            } finally {
+                handle.release();
+            }
+        }
+        throw new BusinessException(ErrorCode.INSUFFICIENT_STOCK);
     }
     
     public OrderResponse getOrder(Long id) {

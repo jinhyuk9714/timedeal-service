@@ -10,6 +10,7 @@ import com.timedeal.api.dto.order.OrderResponse;
 import com.timedeal.api.exception.BusinessException;
 import com.timedeal.api.support.TestFixtures;
 import com.timedeal.api.exception.ErrorCode;
+import com.timedeal.api.infrastructure.lock.StockLockService;
 import com.timedeal.api.infrastructure.persistence.order.OrderRepository;
 import com.timedeal.api.infrastructure.persistence.stock.StockRepository;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -60,6 +61,9 @@ class OrderServiceTest {
     @Mock
     private StockRepository stockRepository;
 
+    @Mock
+    private StockLockService stockLockService;
+
     private final MeterRegistry meterRegistry = new SimpleMeterRegistry();
 
     private OrderService orderService;
@@ -75,9 +79,9 @@ class OrderServiceTest {
         item = TestFixtures.itemOpened(1L);
         stock = TestFixtures.stock(item, 100, 1L);
         orderRequest = TestFixtures.orderRequest(1L, 2);
-        // OrderService에 MeterRegistry 주입 (createOrder 내부 Timer용)
+        // OrderService에 MeterRegistry·StockLockService 주입 (createOrder 내부 Timer·분산 락용)
         orderService = new OrderService(
-                orderRepository, itemService, userService, stockRepository, meterRegistry);
+                orderRepository, itemService, userService, stockRepository, meterRegistry, stockLockService);
     }
 
     @Test
