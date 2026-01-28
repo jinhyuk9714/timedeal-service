@@ -1,5 +1,10 @@
 ## 타임딜 서비스 성능 테스트 계획서 (Performance Test Plan)
 
+> **결과 정리**: 실측 결과는 [PERF_RESULT.md](PERF_RESULT.md)에서 **공통 조건(1절) → 시나리오 정의(2절) → Baseline(3절) → 실험별 비교(4절) → 부하 유형 비교(5절) → 요약·결론(6절)** 구조로 정리합니다.  
+> 비교할 때는 **변수 하나만 바꾸고** 나머지를 공통 조건으로 두는 원칙을 따릅니다.
+
+---
+
 ### 1. 목표
 
 - **목적**
@@ -116,11 +121,27 @@
   - DB/Redis를 일시적으로 중단하거나 느리게 만들고, 동일한 k6 스크립트를 재실행.
   - 결과를 별도 섹션으로 문서화.
 
+#### 5.5 상품 분산 주문 시나리오 (order-spike-distributed)
+
+- **목표**
+  - 5.2(order-spike)는 **동일 아이템에 주문이 몰리는** 패턴.  
+    이 시나리오는 **목록에서 여러 아이템을 골라 분산 주문**하여, “한 상품 몰림 vs 분산” 시 처리량·에러율·락 경합 차이를 비교한다.
+- **대상 API**
+  - `GET /api/items` (목록에서 아이템 ID 선택)
+  - `POST /api/auth/login`
+  - `POST /api/orders` (선택된 itemId로 주문)
+- **부하 패턴**
+  - order-spike와 동일하게 0→200 VU(10s), 200 VU 유지(60s) 등.  
+    환경변수 `RAMP_UP`, `RAMP_TARGET`, `HOLD_DURATION`로 조정 가능.
+- **k6 스크립트**
+  - `perf/k6/order-spike-distributed.js`
+
 ### 6. k6 구조 및 실행 방법 (초안)
 
 - **디렉토리 구조 제안**
   - `perf/k6/basic-read.js`
   - `perf/k6/order-spike.js`
+  - `perf/k6/order-spike-distributed.js` (상품 분산 주문)
   - `perf/k6/soak-mixed.js`
   - `perf/k6/lib/auth.js` (로그인 및 토큰 발급 유틸)
   - `perf/k6/lib/config.js` (BASE_URL, 기본 옵션 등 공통 설정)
@@ -131,6 +152,7 @@
   - k6 실행 예시:
     - `k6 run perf/k6/basic-read.js`
     - `k6 run perf/k6/order-spike.js`
+    - `k6 run perf/k6/order-spike-distributed.js` (환경변수: TEST_EMAIL, TEST_PASSWORD 등)
 
 ### 7. 측정/분석 방법
 
@@ -144,13 +166,15 @@
   - P6Spy:
     - 슬로 쿼리 패턴, 락 대기 쿼리 확인.
 
-- **분석 리포트 구조 (추후 PERF_RESULT.md 에 정리 예정)**
-  - 시나리오 설명
-  - 환경 정보 (서버 스펙, 프로파일, DB/Redis 버전)
-  - 튜닝 전 지표 (표/그래프)
-  - 문제/병목 분석
-  - 적용한 개선 사항 (코드/설정)
-  - 튜닝 후 지표 (전/후 비교)
+- **결과 문서(PERF_RESULT) 구조**
+  - **0절**: 한 페이지 요약 — 공통 조건·시나리오·실험·Baseline 위치
+  - **1절**: 공통 조건 1회 정의 — 환경·앱 설정(풀·캐시·락·인덱스)·시나리오별 데이터 조건
+  - **2절**: 부하 시나리오 정의 — A·B·C·D의 스크립트·부하·대상 API만, 수치 없음  
+    (A=5.1 basic-read, B=5.2 order-spike, C=5.5 order-spike-distributed, D=5.3 soak-mixed)
+  - **3절**: Baseline 결과 — 1·2절 조건으로 A·B·C·D 각각 측정한 한 표
+  - **4절**: 실험별 비교 — 재고 수준·Hikari 풀·캐시·락 전략 등, **각 실험마다 "바꾼 것 / 나머지 1·2절과 동일"** 명시 후 표·해석
+  - **5절**: 부하 유형 비교 — order-spike(B) vs order-spike-distributed(C). 요청 구성이 다르므로 "동일 조건 실험"이 아님을 명시
+  - **6절**: 요약·결론, **부록**: 실행 예시·사전 준비 SQL·인덱스
 
 ### 8. 향후 개선 아이디어 (포트폴리오용)
 
