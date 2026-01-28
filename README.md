@@ -60,9 +60,28 @@ k6와 `perf` 프로파일로 부하·스파이크·Soak 시나리오를 수행�
 
 ---
 
+## 이 프로젝트에서 한 일
+
+- **동시성 제어**: 비관적 락(`SELECT ... FOR UPDATE`)으로 재고 정합성 보장, 낙관적 락 경로 추가 후 성능·실패률 비교 측정 (B-3)
+- **성능 테스트**: k6로 기본 READ·타임딜 스파이크·Soak·캐시(B-2)·락 전략(B-3) 시나리오 수행, PERF_RESULT·PERF_TEST_PLAN 문서화
+- **운영·문서**: Hikari 풀 조정(B-1), Caffeine 캐시(B-2), 배포·모니터링 가이드, 비관적 vs 낙관적 락 비교 문서, 낙관적 락 실패 시 4xx 처리로 5xx 방지
+
+---
+
+## 기술적 결정·트레이드오프
+
+| 주제 | 선택 | 이유·트레이드오프 |
+|------|------|-------------------|
+| **재고 동시성** | 비관적 락 기본, 낙관적 락 옵션 | 동일 상품에 주문이 몰리는 스파이크에서는 비관적 락이 처리량·성공률·에러율 모두 유리. 낙관적 락은 충돌 시 재시도·실패가 많아 부하 구간에선 불리 → `order.lock-strategy`로 전환 가능하도록 유지 |
+| **상품 조회 성능** | Caffeine 캐시(목록·상세) | basic-read 부하에서 p95 약 70% 개선. 주문 몰리는 시나리오엔 영향 적음 |
+| **낙관적 락 실패 응답** | 4xx(INSUFFICIENT_STOCK) | 재시도 후에도 실패하면 클라이언트는 "재고 부족"으로 처리하면 됨. 5xx로 나가면 원인 파악이 어려우므로 전역 핸들러에서 낙관적 락 예외 → 4xx로 매핑 |
+
+---
+
 ## 관련 문서
 
 - [PROJECT_STRUCTURE.md](./PROJECT_STRUCTURE.md) — 프로젝트 구조, 레이어, API, 테스트 가이드
+- [docs/README.md](./docs/README.md) — 문서 목차 (가이드·성능·운영 문서 한눈에)
 - [docs/deployment-monitoring.md](./docs/deployment-monitoring.md) — 배포·모니터링 가이드 (실행 방법, 헬스·메트릭·로그)
 - [docs/perf/PERF_TEST_PLAN.md](./docs/perf/PERF_TEST_PLAN.md) — 성능 테스트 계획·SLO·시나리오
 - [docs/perf/PERF_RESULT.md](./docs/perf/PERF_RESULT.md) — 성능 테스트 실측 결과 리포트
